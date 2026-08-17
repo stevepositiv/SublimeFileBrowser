@@ -127,6 +127,7 @@ e.g. to completely mimic sidebar, it would be:
 | Create file and open it                               | <kbd>cf</kbd>, <kbd>⌘+enter</kbd>          |
 | Create/Edit/Remove jump point                         | <kbd>P</kbd>                               |
 | Toggle hidden files                                   | <kbd>H</kbd>                               |
+| Toggle system files (Windows only)                    | <kbd>alt+shift+h</kbd>                     |
 | Toggle stats column (size & modified time)            | <kbd>S</kbd>                               |
 | Open in Finder/File Explorer                          | <kbd>\\</kbd>                              |
 | Open in new window                                    | <kbd>W</kbd>                               |
@@ -338,11 +339,20 @@ By default FileBrowser shows the same entries as Sublime’s sidebar (including 
 `folder_exclude_patterns`). Unlike the sidebar you can press <kbd>H</kbd> to toggle and show *all*
 files/folders.
 
+On Windows, items with the "system" attribute are hidden separately from regular hidden files;
+press <kbd>alt+shift+h</kbd> to toggle their visibility independently of <kbd>H</kbd>.
+
 
 To start dired with all files showing, set:
 
 ```json
 { "dired_show_hidden_files": true }
+```
+
+On Windows, to also show "system" Files, set:
+
+```json
+{ "dired_show_system_files": true }
 ```
 
 To add extra hide rules without touching the Sublime setting, use `dired_hidden_files_patterns`:
@@ -351,7 +361,7 @@ To add extra hide rules without touching the Sublime setting, use `dired_hidden_
 ```json
 { "dired_hidden_files_patterns": [".*", "__pycache__", "*.pyc"] }
 ```
-Note: On Windows, items with the filesystem "hidden" attribute are always considered hidden.
+Note: On Windows, items with the filesystem attributes "hidden" and/or "system" are always considered hidden.
 That's a deviation from Sublime where the exclude patterns are strictly path operations.
 
 ### VCS integration

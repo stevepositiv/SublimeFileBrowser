@@ -342,6 +342,15 @@
     ]
   },
   {
+    "keys": ["alt+shift+h"], // TODO: move to "Default (Windows).sublime-keymap"
+    "command": "dired_toggle_hidden_files",
+    "args": { "system_files": true },
+    "context": [
+        { "key": "selector", "operator": "equal", "operand": "text.dired" },
+        { "key": "setting.dired_rename_mode", "operand": false }
+    ]
+  },
+  {
     "keys": ["f"],
     "command": "dired_toggle_project_folder",
     "context": [

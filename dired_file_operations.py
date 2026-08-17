@@ -341,6 +341,7 @@ class dired_copy_files(TextCommand, DiredBaseCommand):
         settings.set('dired_to_copy', list(set(copy_list)))
         sublime.save_settings('dired.sublime-settings')
         self.show_hidden = self.view.settings().get('dired_show_hidden_files', True)
+        self.show_system = self.view.settings().get('dired_show_system_files', True)
 
         # Highlight items currently in the internal clipboard (copied/cut)
         self.refresh_clipboard_highlights(copied=copy_list, cut=cut_list)

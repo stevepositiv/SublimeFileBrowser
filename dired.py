@@ -225,6 +225,7 @@ class dired_refresh(TextCommand, DiredBaseCommand):
             stored_expanded = []
         self.expanded = expanded = list(dict.fromkeys(stored_expanded)) if not reset_sels else []
         self.show_hidden = self.view.settings().get('dired_show_hidden_files', True)
+        self.show_system = self.view.settings().get('dired_show_system_files', True)  # only on windows
         self.goto = goto
         if os.sep in goto:
             to_expand = self.expand_goto(to_expand)
@@ -747,6 +748,7 @@ class dired_expand(TextCommand, DiredBaseCommand):
 
         settings = self.view.settings()
         self.show_hidden = settings.get('dired_show_hidden_files', True)
+        self.show_system = settings.get('dired_show_system_files', True)  # only on windows
         show_stats = settings.get('dired_show_stats', False)
         name_width_setting = settings.get('dired_name_col_width', 0)
         size_width_setting = settings.get('dired_size_col_width', 0)
@@ -1223,8 +1225,10 @@ class dired_expand_all(TextCommand, DiredBaseCommand):
         # - If a filter is active, expand one level deeper under currently
         #   expanded directories to surface matches from subfolders.
         # Ensure hidden-files preference is available for list operations
+        # Ensure system-files preference is available for list operations
         s = self.view.settings()
         self.show_hidden = s.get('dired_show_hidden_files', True)
+        self.show_system = s.get('dired_show_system_files', True)  # only on windows
         enabled = s.get('dired_filter_enabled', True)
         filter_active = enabled and (s.get('dired_filter') or s.get('dired_filter_extension'))
         expanded_paths = s.get('dired_expanded_paths') or []
@@ -1301,9 +1305,15 @@ class dired_collapse_all(TextCommand, DiredBaseCommand):
 # OTHER #############################################################
 
 class dired_toggle_hidden_files(TextCommand):
-    def run(self, edit):
+    def run(self, edit, system_files=False):
         show = self.view.settings().get('dired_show_hidden_files', True)
-        self.view.settings().set('dired_show_hidden_files', not show)
+
+        if(not system_files):
+            self.view.settings().set('dired_show_hidden_files', not show)
+        else:
+            showS = self.view.settings().get('dired_show_system_files', True)
+            self.view.settings().set('dired_show_system_files', not showS)
+
         self.view.run_command('dired_refresh')
 
 

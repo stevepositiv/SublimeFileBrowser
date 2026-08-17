@@ -23,6 +23,7 @@ NT = PLATFORM == 'windows'
 LIN = PLATFORM == 'linux'
 OSX = PLATFORM == 'osx'
 FILE_ATTRIBUTE_HIDDEN = 0x2
+FILE_ATTRIBUTE_SYSTEM = 0x4
 
 
 class EntryInfo(NamedTuple):
@@ -435,6 +436,8 @@ class DiredBaseCommand:
 
         # Derive hidden-files flag view settings if not set
         show_hidden = getattr(self, 'show_hidden', settings.get('dired_show_hidden_files', True))
+        # Derive system-files flag view settings if not set (Only has an effect on Windows)
+        show_system = getattr(self, 'show_system', settings.get('dired_show_system_files', True))
 
         # Show contextual help hints in the status bar
         enabled = settings.get('dired_filter_enabled', True)
@@ -458,6 +461,16 @@ class DiredBaseCommand:
                 segments.append(format_size_short(size))
             return f', {name}({"; ".join(segments)})'
 
+        def format_hide(show_hidden, show_system, NT=NT):
+            if (NT):
+                # Format for Windows
+                hidden = 'On' if show_hidden else 'Off'
+                system = 'On' if show_system else 'Off'
+                return "{h}, System: {s}".format(h = hidden, s = system)
+
+            # Format for Others (Unchanged)
+            return 'On' if show_hidden else 'Off'
+
         def _total_size(paths):
             total = 0
             for p in paths:
@@ -473,13 +486,15 @@ class DiredBaseCommand:
                         return 0
             return total
 
+        hidden_info = format_hide(show_hidden, show_system)
         marked_info = format_mark(marked_items, 'marked')
         copied_info = format_mark(copied_items, 'copied')
         cut_info = format_mark(cut_items, 'cut')
+
         status = "{help}{root}Hidden: {hidden}{marked}{copied}{cut}".format(
             help=help_segment,
             root='Project root, ' if path_in_project else '',
-            hidden='On' if show_hidden else 'Off',
+            hidden=hidden_info,
             marked=marked_info,
             copied=copied_info,
             cut=cut_info
@@ -526,7 +541,9 @@ class DiredBaseCommand:
         except AttributeError:
             return False
         else:
-            return bool(attrs & FILE_ATTRIBUTE_HIDDEN)
+            return bool(attrs & FILE_ATTRIBUTE_HIDDEN) or bool(attrs & FILE_ATTRIBUTE_SYSTEM)
+
+            # NOTE: .is_hidden() seems to never get called in the codebase
 
     def list_directory(self, path) -> tuple[list[str], str]:
         '''List entries in a directory or return an error.
@@ -607,6 +624,7 @@ class DiredBaseCommand:
     def _our_scandir(self, path: str, sortfunc=NATURAL_SORT, in_search=False) -> list[EntryInfo]:
         """Return EntryInfo objects for the given directory, respecting hidden settings."""
         show_hidden = getattr(self, 'show_hidden', self.view.settings().get('dired_show_hidden_files', True))
+        show_system = getattr(self, 'show_system', self.view.settings().get('dired_show_system_files', True))
         exclude_patterns = []
         if not show_hidden:
             exclude_patterns = self.view.settings().get('dired_hidden_files_patterns', [])
@@ -625,7 +643,7 @@ class DiredBaseCommand:
 
         if not in_search:
             _do_scandir.cache_clear()
-        return _do_scandir(path, show_hidden, tuple(exclude_patterns), tuple(dir_patterns), sortfunc)
+        return _do_scandir(path, show_hidden, show_system, tuple(exclude_patterns), tuple(dir_patterns), sortfunc)
 
     def recreate_dired_expanded_paths_from_view(self):
         # Update persisted expanded paths based on current view state
@@ -923,6 +941,7 @@ class DiredBaseCommand:
 def _do_scandir(
     path: str,
     show_hidden: bool,
+    show_system: bool,
     exclude_patterns: tuple[str],
     dir_patterns: tuple[str],
     sortfunc
@@ -947,13 +966,14 @@ def _do_scandir(
 
             if any(fnmatch.fnmatch(name, pattern) for pattern in exclude_patterns):
                 continue
-            if NT and stat_res and not show_hidden:
+            if NT and stat_res:
                 try:
                     attrs = stat_res.st_file_attributes
                 except AttributeError:
                     pass
                 else:
-                    if attrs & FILE_ATTRIBUTE_HIDDEN:
+                    if not show_hidden and attrs & FILE_ATTRIBUTE_HIDDEN \
+                    or not show_system and attrs & FILE_ATTRIBUTE_SYSTEM:
                         continue
 
             is_directory = entry.is_dir(follow_symlinks=False)
