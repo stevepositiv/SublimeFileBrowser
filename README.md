@@ -442,6 +442,14 @@ Files queued in the internal clipboard are highlighted as well:
 - Copied items use the `dired.copied` scope.
 - Cut items use the `dired.cut` scope.
 
+On Windows, items carrying the filesystem "hidden" and "system" attribute are
+highlighted using `dired.fileattr.hidden` and `dired.fileattr.system` respectively.
+Files carrying both attributes ("superhidden") also get both scopes.
+Files that are "system" but not "hidden" use `dired.fileattr.system.only`
+instead, which falls back to any `dired.fileattr.system` rule if you don't
+define one for it.
+These scopes rely on the stats column, so `dired_show_stats` needs to be enabled.
+
 You can customize these colors in your active color scheme by adding rules
 for the scopes above (e.g., set a soft rosa background for `dired.copied`,
 and a slightly dimmer foreground for `dired.cut`).
