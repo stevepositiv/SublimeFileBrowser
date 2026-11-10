@@ -7,6 +7,46 @@ file_extensions:
 scope: text.dired
 contexts:
   main:
+    # The three variants below recolor the item name when the stats column
+    # (only present when `dired_show_stats` is on) carries the Windows
+    # hidden/system attribute flags ("H"/"S", or "-" when unset). They are
+    # the last column, so the lookahead finds them by a leading space and
+    # end-of-line, rather than by position. Most specific (both flags)
+    # first, since the generic fallback further down would otherwise win.
+    #
+    # The fileattr scope is appended AFTER the base name scope (not before):
+    # Sublime resolves each style property (foreground, background, ...) by
+    # picking the innermost/rightmost matching scope atom in the stack, so a
+    # fileattr atom placed first would lose foreground/background to any
+    # broad base-theme rule matching e.g. "string" (fontStyle isn't usually
+    # contested the same way, which is why it alone seemed to "work").
+    - match: '^(?=.*\x{200B}.* HS$)(\s*)([▸▾] )([^\/]*?)([/\\])?\s*(<.*>)?(\s*\x{200B}(.*))?$'
+      scope: dired.item.directory
+      captures:
+        1: indent
+        2: punctuation.definition.directory.symbol.dired
+        3: string.name.directory.dired dired.fileattr.hidden dired.fileattr.system
+        4: punctuation.definition.directory.slash.dired dired.fileattr.hidden dired.fileattr.system
+        5: string.error.dired
+        6: string.name.directory.stats.dired
+    - match: '^(?=.*\x{200B}.* H-$)(\s*)([▸▾] )([^\/]*?)([/\\])?\s*(<.*>)?(\s*\x{200B}(.*))?$'
+      scope: dired.item.directory
+      captures:
+        1: indent
+        2: punctuation.definition.directory.symbol.dired
+        3: string.name.directory.dired dired.fileattr.hidden
+        4: punctuation.definition.directory.slash.dired dired.fileattr.hidden
+        5: string.error.dired
+        6: string.name.directory.stats.dired
+    - match: '^(?=.*\x{200B}.* -S$)(\s*)([▸▾] )([^\/]*?)([/\\])?\s*(<.*>)?(\s*\x{200B}(.*))?$'
+      scope: dired.item.directory
+      captures:
+        1: indent
+        2: punctuation.definition.directory.symbol.dired
+        3: string.name.directory.dired dired.fileattr.system
+        4: punctuation.definition.directory.slash.dired dired.fileattr.system
+        5: string.error.dired
+        6: string.name.directory.stats.dired
     - match: '^(\s*)([▸▾] )([^\/]*?)([/\\])?\s*(<.*>)?(\s*\x{200B}(.*))?$'
       scope: dired.item.directory
       captures:
@@ -16,6 +56,30 @@ contexts:
         4: punctuation.definition.directory.slash.dired
         5: string.error.dired
         6: string.name.directory.stats.dired
+    - match: '^(?=.*\x{200B}.* HS$)(\s*)(≡ )(.*?(\.[^\.\n]+?)?)(\s*\x{200B}(.*))?$'
+      scope: dired.item.file
+      captures:
+        1: indent
+        2: punctuation.definition.file.symbol.dired
+        3: string.name.file.dired dired.fileattr.hidden dired.fileattr.system
+        4: string.name.file.extension.dired dired.fileattr.hidden dired.fileattr.system
+        5: string.name.file.stats.dired
+    - match: '^(?=.*\x{200B}.* H-$)(\s*)(≡ )(.*?(\.[^\.\n]+?)?)(\s*\x{200B}(.*))?$'
+      scope: dired.item.file
+      captures:
+        1: indent
+        2: punctuation.definition.file.symbol.dired
+        3: string.name.file.dired dired.fileattr.hidden
+        4: string.name.file.extension.dired dired.fileattr.hidden
+        5: string.name.file.stats.dired
+    - match: '^(?=.*\x{200B}.* -S$)(\s*)(≡ )(.*?(\.[^\.\n]+?)?)(\s*\x{200B}(.*))?$'
+      scope: dired.item.file
+      captures:
+        1: indent
+        2: punctuation.definition.file.symbol.dired
+        3: string.name.file.dired dired.fileattr.system
+        4: string.name.file.extension.dired dired.fileattr.system
+        5: string.name.file.stats.dired
     - match: '^(\s*)(≡ )(.*?(\.[^\.\n]+?)?)(\s*\x{200B}(.*))?$'
       scope: dired.item.file
       captures:
