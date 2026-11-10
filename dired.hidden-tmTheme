@@ -196,6 +196,32 @@
 				<string>#d9dee4</string>
 			</dict>
 		</dict>
+		<dict>
+			<key>name</key>
+			<string>Hidden</string>
+			<key>scope</key>
+			<string>dired.fileattr.hidden</string>
+			<key>settings</key>
+			<dict>
+				<key>foreground</key>
+				<string>#8D99AA</string>
+				<key>background</key>
+				<string>#d9dee5</string>
+			</dict>
+		</dict>
+		<dict>
+			<key>name</key>
+			<string>System</string>
+			<key>scope</key>
+			<string>dired.fileattr.system</string>
+			<key>settings</key>
+			<dict>
+				<key>foreground</key>
+				<string>#D6774B</string>
+				<key>background</key>
+				<string>#d9dee5</string>
+			</dict>
+		</dict>
 
 		<!-- HELP ----------------------------- -->
 		<dict>

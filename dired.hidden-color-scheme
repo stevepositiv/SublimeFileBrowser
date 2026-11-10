@@ -1,0 +1,16 @@
+// To Highlight Hidden and System Files on Windows with Mariana Color Scheme and Default Dark Theme
+{
+	"rules":
+	[
+		{
+		    "name": "Hidden File",
+		    "scope": "dired.fileattr.hidden",
+		    "foreground": "color(var(green) a(0.6) s(+ 10%))",
+		},
+		{
+		    "name": "System File",
+		    "scope": "dired.fileattr.system",
+		    "foreground": "color(var(blue5) a(0.6) s(+ 10%))",
+		},
+	]
+}

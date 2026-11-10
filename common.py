@@ -29,6 +29,8 @@ class EntryInfo(NamedTuple):
     is_dir: bool
     size: int | None
     mtime: float | None
+    hidden: bool
+    system: bool
 
 
 class ListingItem(NamedTuple):
@@ -37,6 +39,8 @@ class ListingItem(NamedTuple):
     is_dir: bool
     size: int | None
     mtime: float | str | None
+    hidden: bool
+    system: bool
     depth: int
     expanded: bool
     note: str
@@ -922,7 +926,7 @@ def _do_scandir(
 ) -> list[EntryInfo]:
     if not path:
         entries = [
-            EntryInfo(f"{drive}:", f"{drive}:{os.sep}", True, None, None)
+            EntryInfo(f"{drive}:", f"{drive}:{os.sep}", True, None, None, False, False)
             for drive in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
             if isdir(f"{drive}:")
         ]
@@ -940,14 +944,16 @@ def _do_scandir(
 
             if any(fnmatch.fnmatch(name, pattern) for pattern in exclude_patterns):
                 continue
+            hidden = system = False
             if NT and stat_res:
                 try:
                     attrs = stat_res.st_file_attributes
                 except AttributeError:
                     pass
                 else:
-                    if not show_hidden and attrs & FILE_ATTRIBUTE_HIDDEN \
-                    or not show_system and attrs & FILE_ATTRIBUTE_SYSTEM:
+                    hidden = bool(attrs & FILE_ATTRIBUTE_HIDDEN)
+                    system = bool(attrs & FILE_ATTRIBUTE_SYSTEM)
+                    if not show_hidden and hidden or not show_system and system:
                         continue
 
             is_directory = entry.is_dir(follow_symlinks=False)
@@ -959,7 +965,7 @@ def _do_scandir(
             full_path = entry.path
             if is_directory and not full_path.endswith(os.sep):
                 full_path += os.sep
-            items.append(EntryInfo(name, full_path, is_directory, size, mtime))
+            items.append(EntryInfo(name, full_path, is_directory, size, mtime, hidden, system))
 
     items.sort(key=sortfunc)
     return items

@@ -12,7 +12,8 @@ from sublime_plugin import EventListener, WindowCommand, TextCommand
 
 from .common import (
     DiredBaseCommand, ListingItem, calc_width, display_path, emit_event, get_group, hijack_window,
-    history_replace, set_proper_scheme, NT, PARENT_SYM, rx_fuzzy_match)
+    history_replace, set_proper_scheme, NT, PARENT_SYM, rx_fuzzy_match,
+    FILE_ATTRIBUTE_HIDDEN, FILE_ATTRIBUTE_SYSTEM)
 from . import prompt
 from .show import show, create_dired_view, retarget_dired_view
 from .jumping import jump_names
@@ -353,8 +354,8 @@ class dired_refresh(TextCommand, DiredBaseCommand):
             tab_size,
             dir_sep=_display_path_separator(s),
         )
-        max_name_width = max((display_len for _, display_len, _, _ in rendered), default=0)
-        max_size_width = max((len(size_part) for _, _, size_part, _ in rendered), default=0)
+        max_name_width = max((display_len for _, display_len, _, _, _ in rendered), default=0)
+        max_size_width = max((len(size_part) for _, _, size_part, _, _ in rendered), default=0)
         name_width = max(max_name_width, MIN_NAME_COL_WIDTH) if show_stats else max_name_width
         lines = render_items(rendered, name_width, max_size_width, show_stats)
 
@@ -925,7 +926,12 @@ class dired_expand(TextCommand, DiredBaseCommand):
         _base_timestamp = None
         if SEPARATOR in line_content:
             stats_part = line_content.split(SEPARATOR, 1)[1].strip()
-            parts = stats_part.split(' ', 1)
+            if NT:
+                # Drop the trailing "  HS" attribute flags to normalize cols
+                stats_part = stats_part[:-4]
+            
+            # Note: this split used to be by a single space ' ' now two '  '
+            parts = stats_part.split('  ', 1)
             if len(parts) == 2:
                 _base_timestamp = parts[1].strip()
         drive, tail = os.path.splitdrive(path)
@@ -933,12 +939,23 @@ class dired_expand(TextCommand, DiredBaseCommand):
             display_name = drive
         else:
             display_name = basename(path.rstrip(os.sep))
+        root_hidden = root_system = False
+        if NT:
+            try:
+                root_attrs = os.stat(path).st_file_attributes
+            except OSError:
+                pass
+            else:
+                root_hidden = bool(root_attrs & FILE_ATTRIBUTE_HIDDEN)
+                root_system = bool(root_attrs & FILE_ATTRIBUTE_SYSTEM)
         root_entry = ListingItem(
             display_name,
             path,
             True,
             9999,  # size not shown for dirs
             _base_timestamp,
+            root_hidden,
+            root_system,
             indentation_level,
             expanded=True,
             note=err or ('empty' if not entries else '')
@@ -951,8 +968,8 @@ class dired_expand(TextCommand, DiredBaseCommand):
             tab_size,
             dir_sep=_display_path_separator(settings),
         )
-        max_name_width = max((display_len for _, display_len, _, _ in rendered), default=0)
-        max_size_width = max((len(size_part) for _, _, size_part, _ in rendered), default=0)
+        max_name_width = max((display_len for _, display_len, _, _, _ in rendered), default=0)
+        max_size_width = max((len(size_part) for _, _, size_part, _, _ in rendered), default=0)
         desired_name_width = max(max_name_width, MIN_NAME_COL_WIDTH) if show_stats else max_name_width
         if show_stats and (
             desired_name_width > name_width_setting or max_size_width > size_width_setting
@@ -1623,18 +1640,23 @@ def format_items(items, show_stats, tab_size, dir_sep: str):
             base_line = f"{indent}≡ {e.name}"
         display_len = len(base_line.expandtabs(tab_size))
         size_part, timestamp = format_stats(e, show_stats)
-        rendered.append((base_line, display_len, size_part, timestamp))
+        flags_part = (('H' if e.hidden else '-') + ('S' if e.system else '-')) if NT else ''
+        rendered.append((base_line, display_len, size_part, timestamp, flags_part))
         new_index.append(e.full_path)
     return rendered, new_index
 
 
 def render_items(items, name_width, size_width, show_stats):
     lines = []
-    for base_line, display_len, size_part, timestamp in items:
+    for base_line, display_len, size_part, timestamp, flags_part in items:
         if show_stats and size_part:
             padding = max(name_width - display_len + STATS_PADDING, STATS_PADDING)
             size_aligned = size_part.rjust(size_width)
-            stats_segment = size_aligned if not timestamp else f"{size_aligned}  {timestamp}"
+            stats_segment = size_aligned
+            if timestamp:
+                stats_segment += f"  {timestamp}"
+            if flags_part:
+                stats_segment += f"  {flags_part}"
             lines.append(f"{base_line}{' ' * padding}{SEPARATOR}{stats_segment}")
         else:
             lines.append(base_line)
