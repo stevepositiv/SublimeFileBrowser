@@ -21,6 +21,7 @@ from .jumping import jump_names
 
 ICON    = '𝌆'
 SEPARATOR = '\u200b'
+STATS_SEP = ' \u2063 ' # includes padding (for usage with .join())
 STATS_PADDING = 2
 MIN_NAME_COL_WIDTH = 10
 
@@ -925,15 +926,9 @@ class dired_expand(TextCommand, DiredBaseCommand):
         entries, err = self.walkdir(path, depth=indentation_level + 1)
         _base_timestamp = None
         if SEPARATOR in line_content:
-            stats_part = line_content.split(SEPARATOR, 1)[1].strip()
-            if NT:
-                # Drop the trailing "  HS" attribute flags to normalize cols
-                stats_part = stats_part[:-4]
-            
-            # Note: this split used to be by a single space ' ' now two '  '
-            parts = stats_part.split('  ', 1)
-            if len(parts) == 2:
-                _base_timestamp = parts[1].strip()
+            stats_part = line_content.split(SEPARATOR, 1)[1]
+            _, date_text, _ = split_stats_segment(stats_part)
+            _base_timestamp = date_text or None
         drive, tail = os.path.splitdrive(path)
         if tail in (os.sep, ''):
             display_name = drive
@@ -1593,20 +1588,33 @@ def existing_directories(paths):
     return list(dict.fromkeys(path for path in paths if isdir(path)))
 
 
+def join_stats_segment(size_text: str, date_text: str, flags_text: str) -> str:
+    """Join Stats by Separator"""
+    return STATS_SEP.join((size_text, date_text, flags_text))
+
+def split_stats_segment(text: str) -> tuple[str, str, str]:
+    """Inverse of join_stats_segment. Returns (size, date, flags)"""
+    cols  = 3
+    parts = ((text + STATS_SEP*cols).split(STATS_SEP, cols))[:cols]
+    size_text, date_text, flags_text = (p.strip() for p in parts)
+    return size_text, date_text, flags_text
+
+
 def format_stats(entry: ListingItem, show_stats: bool, date_format='%d.%m.%Y %H:%M'):
     if not show_stats:
-        return '', ''
+        return '', '', ''
     if entry.is_dir:
         size_part = 'DIR'
     elif entry.size is not None:
         size_part = f"{entry.size:,}".replace(",", ".")
     else:
-        return '', ''
+        return '', '', ''
     if isinstance(entry.mtime, float):
         timestamp = datetime.fromtimestamp(entry.mtime).strftime(date_format)
     else:
         timestamp = entry.mtime or ''
-    return size_part, timestamp
+    flags_part = (('H' if entry.hidden else '-') + ('S' if entry.system else '-')) if NT else ''
+    return size_part, timestamp, flags_part
 
 
 def _display_path_separator(settings) -> str:
@@ -1639,8 +1647,7 @@ def format_items(items, show_stats, tab_size, dir_sep: str):
         else:
             base_line = f"{indent}≡ {e.name}"
         display_len = len(base_line.expandtabs(tab_size))
-        size_part, timestamp = format_stats(e, show_stats)
-        flags_part = (('H' if e.hidden else '-') + ('S' if e.system else '-')) if NT else ''
+        size_part, timestamp, flags_part = format_stats(e, show_stats)
         rendered.append((base_line, display_len, size_part, timestamp, flags_part))
         new_index.append(e.full_path)
     return rendered, new_index
@@ -1652,11 +1659,9 @@ def render_items(items, name_width, size_width, show_stats):
         if show_stats and size_part:
             padding = max(name_width - display_len + STATS_PADDING, STATS_PADDING)
             size_aligned = size_part.rjust(size_width)
-            stats_segment = size_aligned
-            if timestamp:
-                stats_segment += f"  {timestamp}"
-            if flags_part:
-                stats_segment += f"  {flags_part}"
+            date_text = timestamp if timestamp else ''
+            flags_text = flags_part if flags_part else ''
+            stats_segment = join_stats_segment(size_aligned, date_text, flags_text)
             lines.append(f"{base_line}{' ' * padding}{SEPARATOR}{stats_segment}")
         else:
             lines.append(base_line)
