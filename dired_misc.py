@@ -3,27 +3,44 @@
 '''
 
 import glob
-from itertools import chain
 import math
 import operator as op
 import os
 import subprocess
 import sys
 import threading
-from os.path import (
-    dirname, isfile, isdir, exists, join, normpath,
-    getsize, getctime, getatime, getmtime)
 from datetime import datetime
+from itertools import chain
+from os.path import (
+    dirname,
+    exists,
+    getatime,
+    getctime,
+    getmtime,
+    isfile,
+    join,
+    normpath,
+)
 
 import sublime
 import sublime_plugin
 from sublime import Region
-from sublime_plugin import TextCommand, EventListener
+from sublime_plugin import EventListener, TextCommand
 
-from .common import (
-    DiredBaseCommand, hijack_window, get_group, emit_event,
-    MARK_OPTIONS, NT, OSX, PARENT_SYM, sort_nicely)
-
+from .lib.common import (
+    COLOR_SCHEME_PATH,
+    DIRED_SETTINGS,
+    HELP_SYNTAX_PATH,
+    MARK_OPTIONS,
+    NT,
+    OSX,
+    PARENT_SYM,
+    SHORTCUTS_PATH,
+    DiredBaseCommand,
+    emit_event,
+    get_group,
+    hijack_window,
+)
 
 STARTUPINFO = None
 if sys.platform == "win32":
@@ -35,10 +52,10 @@ def convert_size(size):
     if not size:
         return '0 B'
     size_name = ("B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB")
-    i = int(math.floor(math.log(size, 1024)))
+    i = math.floor(math.log(size, 1024))
     p = math.pow(1024, i)
     s = round(size / p, 2)
-    return '%s %s' % (s, size_name[i])
+    return f'{s} {size_name[i]}'
 
 
 def get_dates(path):
@@ -77,8 +94,8 @@ class dired_find_in_files(TextCommand, DiredBaseCommand):
 PANEL_NAME = "dired_help"
 HELP_VIEW_SETTINGS = {
     'rulers': [],
-    'color_scheme': 'Packages/FileBrowser/dired.hidden-tmTheme',
-    'syntax': 'Packages/FileBrowser/dired-help.sublime-syntax',
+    'color_scheme': COLOR_SCHEME_PATH,
+    'syntax': HELP_SYNTAX_PATH,
     'margin': 16,
     'line_numbers': False,
     'gutter': False,
@@ -100,7 +117,7 @@ def ensure_panel(window: sublime.Window) -> sublime.View:
 
 def show_panel(window: sublime.Window) -> sublime.View:
     panel = ensure_panel(window)
-    window.run_command("show_panel", {"panel": "output.{}".format(PANEL_NAME)})
+    window.run_command("show_panel", {"panel": f"output.{PANEL_NAME}"})
     return panel
 
 
@@ -113,9 +130,9 @@ class dired_help(sublime_plugin.TextCommand):
         for key, value in HELP_VIEW_SETTINGS.items():
             panel.settings().set(key, value)
         # load help content
-        content = sublime.load_resource('Packages/FileBrowser/shortcuts.md')
+        content = sublime.load_resource(SHORTCUTS_PATH)
         if not content:
-            window.status_message("Could not load 'Packages/FileBrowser/shortcuts.md'.")
+            window.status_message(f"Could not load '{SHORTCUTS_PATH}'.")
             return
         # normalize line endings
         content = content.replace('\r\n', '\n').replace('\r', '\n')
@@ -147,9 +164,9 @@ class dired_only_one_project_folder(TextCommand, DiredBaseCommand):
     def run(self, edit):
         path = self.path.rstrip(os.sep)
         msg = (
-            "Set '{0}' as only one project folder "
+            f"Set '{path}' as only one project folder "
             "(will remove all other folders from project)?"
-            .format(path)
+            
         )
         if sublime.ok_cancel_dialog(msg):
             data = self.view.window().project_data() or {'folders': {}}
@@ -178,7 +195,7 @@ class dired_quick_look(TextCommand, DiredBaseCommand):
                 launch = lambda f: subprocess.call(['open', f], cwd=dirname(f))
             elif NT:
                 # the "" before filename is a trick for batch files and such
-                launch = lambda f: subprocess.call('start "" "%s"' % f, shell=True, cwd=dirname(f))
+                launch = lambda f: subprocess.call(f'start "" "{f}"', shell=True, cwd=dirname(f))
             else:
                 launch = lambda f: subprocess.call(['xdg-open', f], cwd=dirname(f))
             for filename in files:
@@ -199,10 +216,10 @@ class dired_open_external(TextCommand, DiredBaseCommand):
         p, f  = os.path.split(fname.rstrip(os.sep))
 
         if not exists(fname):
-            return sublime.status_message('Directory doesn’t exist “%s”' % path)
+            return sublime.status_message(f'Directory doesn’t exist “{path}”')
 
         if NT and path == 'ThisPC\\':
-            return subprocess.Popen('explorer /select,"%s"' % fname)
+            return subprocess.Popen(f'explorer /select,"{fname}"')
 
         if files:
             self.view.window().run_command("open_dir", {"dir": p, "file": f})
@@ -224,7 +241,7 @@ class dired_open_in_new_window(TextCommand, DiredBaseCommand):
         self.open_in_subl(files)
 
         def run_on_new_window():
-            settings = sublime.load_settings('dired.sublime-settings')
+            settings = sublime.load_settings(DIRED_SETTINGS)
             open_on_jump = settings.get('dired_open_on_jump', 'left')
 
             if open_on_jump:
@@ -373,7 +390,7 @@ class dired_toggle_filter(TextCommand, DiredBaseCommand):
         # Refresh and update highlight according to new state
         self.view.run_command('dired_refresh')
         state = 'On' if not enabled else 'Off'
-        sublime.status_message('FileBrowser: Filter {}'.format(state))
+        sublime.status_message(f'FileBrowser: Filter {state}')
 
 
 class dired_filter_by_extension(TextCommand, DiredBaseCommand):
@@ -409,7 +426,7 @@ class dired_filter_by_extension(TextCommand, DiredBaseCommand):
             s.set('dired_filter_extension', ext)
             if not enabled:
                 s.erase('dired_filter')
-            sublime.status_message('FileBrowser: Extension filter {}'.format(ext))
+            sublime.status_message(f'FileBrowser: Extension filter {ext}')
         s.set('dired_filter_enabled', True)
         s.set('dired_filter_live', False)
         self.view.run_command('dired_refresh')
@@ -424,7 +441,7 @@ class dired_toggle_stats(TextCommand, DiredBaseCommand):
         current = settings.get('dired_show_stats', False)
         settings.set('dired_show_stats', not current)
         state = 'On' if not current else 'Off'
-        sublime.status_message('FileBrowser: Stats {}'.format(state))
+        sublime.status_message(f'FileBrowser: Stats {state}')
         self.view.run_command('dired_refresh')
 
 
@@ -472,15 +489,15 @@ class DiredContextProvider(EventListener):
         if key == "dired_simple_selection":
             if operator not in (sublime.OP_EQUAL, sublime.OP_NOT_EQUAL):
                 print(
-                    "Context '{key}' only supports operator 'equal' and 'not_equal'."
-                    .format(key=key)
+                    f"Context '{key}' only supports operator 'equal' and 'not_equal'."
+                    
                 )
                 return False
 
             if operand not in (True, False):
                 print(
-                    "Context '{key}' only supports operand 'true' and 'false'."
-                    .format(key=key)
+                    f"Context '{key}' only supports operand 'true' and 'false'."
+                    
                 )
                 return False
 
@@ -526,7 +543,7 @@ class CallVCS(DiredBaseCommand):
         '''target function for a thread; worker'''
         try:
             root, status = self.get_output(vcs, self.expand_command(vcs, command), path)
-        except Exception:
+        except Exception:  # noqa: BLE001
             changed_items = {}
         else:
             changed_items = {
@@ -537,7 +554,7 @@ class CallVCS(DiredBaseCommand):
         finally:
             self.done(changed_items)
 
-    def done(self, changed_items={}):
+    def done(self, changed_items={}):  # noqa: B006
         sublime.set_timeout(lambda: self.sink_(changed_items))  # fan-in
 
     def sink_(self, changed_items):
@@ -556,10 +573,10 @@ class CallVCS(DiredBaseCommand):
             else:
                 sublime.error_message(
                     'FileBrowser:\n'
-                    'It seems like you use wildcards in\n\n"{0}_path": "{1}".\n\n'
+                    f'It seems like you use wildcards in\n\n"{vcs}_path": "{command}".\n\n'
                     'But the pattern cannot be found, please, fix it '
                     'or use absolute path without wildcards.'
-                    .format(vcs, command)
+                    
                 )
         return command
 
@@ -580,6 +597,7 @@ class CallVCS(DiredBaseCommand):
 
         root = subprocess.run(
             [executable] + args[f'{vcs}_root'],
+            check=False,
             cwd=path,
             capture_output=True,
             text=True,
@@ -592,6 +610,7 @@ class CallVCS(DiredBaseCommand):
 
         status = subprocess.run(
             [executable] + args[f'{vcs}_status'],
+            check=False,
             cwd=path,
             capture_output=True,
             text=True,
@@ -627,7 +646,7 @@ class dired_draw_vcs_marker(TextCommand, DiredBaseCommand):
         }
         colorblind = self.view.settings().get('vcs_color_blind', False)
         offset = 1 if not colorblind else 0
-        for fn in changed_items.keys():
+        for fn in changed_items:
             full_fn = normpath(fn)
             for p in chain([full_fn], paths_upwards(full_fn)):
                 r = files_regions.get(p, 0)

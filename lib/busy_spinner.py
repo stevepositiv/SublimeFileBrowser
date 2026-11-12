@@ -4,17 +4,16 @@ from __future__ import annotations
 
 import time
 from collections import defaultdict
+from collections.abc import Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from itertools import count
-from typing import Sequence, Tuple
 
 import sublime
 
-
 __all__ = (
-    "BusyIndicators",
     "BusyIndicatorConfig",
+    "BusyIndicators",
     "busy_indicator",
     "start_busy_indicator",
     "stop_busy_indicator",
@@ -22,8 +21,8 @@ __all__ = (
 
 
 class BusyIndicators:
-    ROLLING = ["◐", "◓", "◑", "◒"]
-    STARS = ["◇", "◈", "◆"]
+    ROLLING = ["◐", "◓", "◑", "◒"]      # noqa: RUF012
+    STARS   = ["◇", "◈", "◆"]           # noqa: RUF012
     BRAILLE = "⣷⣯⣟⡿⢿⣻⣽⣾"
 
 
@@ -36,7 +35,7 @@ class BusyIndicatorConfig:
 
 
 STATUS_BUSY_KEY = "gitsavvy-x-is-busy"
-Key = Tuple[sublime.View, str]
+Key = tuple[sublime.View, str]
 running_busy_indicators: dict[Key, BusyIndicatorConfig] = {}
 stack: defaultdict[Key, list[tuple[int, dict]]] = defaultdict(list)
 c = count()

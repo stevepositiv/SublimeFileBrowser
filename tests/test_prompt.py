@@ -3,7 +3,7 @@ import tempfile
 
 from unittesting import DeferrableViewTestCase
 
-from FileBrowser.prompt import dired_prompt, map_window_to_ctx, PromptContext, start
+from FileBrowser.dired_prompt import dired_prompt, map_window_to_ctx, PromptContext, start
 
 
 class DirectoryPromptTest(DeferrableViewTestCase):
