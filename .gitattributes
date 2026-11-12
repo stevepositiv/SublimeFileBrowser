@@ -8,7 +8,6 @@
 *.gitattributes     export-ignore
 
 # development
-/stubs              export-ignore
 /tests/             export-ignore
 /__init__.py        export-ignore
 mypy.ini            export-ignore

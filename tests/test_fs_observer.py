@@ -7,7 +7,7 @@ from unittest import TestCase, mock, skipIf
 
 from unittesting import DeferrableTestCase
 
-from FileBrowser.common import emit_event
+from FileBrowser.lib.common import emit_event
 
 fs_observer = importlib.import_module('FileBrowser.0_dired_fs_observer')
 

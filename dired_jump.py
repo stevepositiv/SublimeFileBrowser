@@ -1,25 +1,29 @@
-# coding: utf8
-import sublime
-from sublime import status_message, ok_cancel_dialog, load_settings, save_settings, Region
-from sublime_plugin import TextCommand
 import os
-from os.path import isdir, basename
+from os.path import basename, isdir
 
-from .common import DiredBaseCommand
-from .show import show
-from .show import set_proper_scheme
-SYNTAX_EXTENSION = '.sublime-syntax'
+import sublime
+from sublime import (
+    Region,
+    load_settings,
+    ok_cancel_dialog,
+    save_settings,
+    status_message,
+)
+from sublime_plugin import TextCommand
+
+from .lib.common import DIRED_SETTINGS, JUMPLIST_SYNTAX_PATH, DiredBaseCommand
+from .lib.show import set_proper_scheme, show
 
 
 def load_jump_points():
-    return load_settings('dired.sublime-settings').get('dired_jump_points', {})
+    return load_settings(DIRED_SETTINGS).get('dired_jump_points', {})
 
 
 def save_jump_points(points, reverse=False):
     if reverse:
-        points = dict((n, t) for t, n in points.items())
-    load_settings('dired.sublime-settings').set('dired_jump_points', points)
-    save_settings('dired.sublime-settings')
+        points = {n: t for t, n in points.items()}
+    load_settings(DIRED_SETTINGS).set('dired_jump_points', points)
+    save_settings(DIRED_SETTINGS)
 
 
 def jump_points():
@@ -62,23 +66,23 @@ class dired_jump(TextCommand, DiredBaseCommand):
             return
         name, target = self.jump_points[index]
         if isdir(target):
-            settings = load_settings('dired.sublime-settings')
+            settings = load_settings(DIRED_SETTINGS)
             smart_jump = settings.get('dired_smart_jump', False)
             auto = self.new_window == 'auto'
             if self.new_window is True or ((not smart_jump) and auto) or (smart_jump and auto and len(self.view.window().views()) > 0):
                 self.view.run_command("dired_open_in_new_window", {"project_folder": [target]})
             else:
                 show(self.view.window(), target, reuse_view=self.view, record_history=True)
-                status_message("Jumping to point '{0}' complete".format(name))
+                status_message(f"Jumping to point '{name}' complete")
         else:
             # workaround ST3 bug https://github.com/SublimeText/Issues/issues/39
             self.view.window().run_command('hide_overlay')
-            msg = "Can't jump to '{0} → {1}'.\n\nRemove that jump point?".format(name, target)
+            msg = f"Can't jump to '{name} → {target}'.\n\nRemove that jump point?"
             if ok_cancel_dialog(msg):
                 points = load_jump_points()
                 del points[name]
                 save_jump_points(points)
-                status_message("Jump point '{0}' was removed".format(name))
+                status_message(f"Jump point '{name}' was removed")
                 self.view.run_command('dired_refresh')
 
 
@@ -99,14 +103,14 @@ class dired_edit_jump_point(TextCommand, DiredBaseCommand):
         if name:  # edit or create jump point
             for t, n in self.names.items():
                 if n == name:
-                    msg = "The jump point with name '{0}' is already exists ({1})\n\n".format(n, t)
+                    msg = f"The jump point with name '{n}' is already exists ({t})\n\n"
                     msg += "Do you want to overwrite it?"
                     if ok_cancel_dialog(msg):
                         del self.names[t]
                     else:
                         return
             self.names[self.project_path] = name
-            status_message("Jump point for this directory was set to '{0}'".format(name))
+            status_message(f"Jump point for this directory was set to '{name}'")
         elif self.project_path in self.names:
             del self.names[self.project_path]
             status_message("Jump point for this directory was removed")
@@ -144,7 +148,7 @@ class dired_jump_list_render(TextCommand):
             content += "Jump list is empty!\n\nAdd a folder to your jump list by pressing P (shift + p)\nwhile you are browsing that folder in FileBrowser"
 
         for p in self.jump_points:
-            content += '★ {0}→{1}\n'.format(self.display_name(p[0]), self.display_path(p[1]))
+            content += f'★ {self.display_name(p[0])}→{self.display_path(p[1])}\n'
         return content
 
     def display_name(self, name):
@@ -173,7 +177,7 @@ class dired_jump_list(TextCommand):
 
         view.set_name("FileBrowser: Jump List")
         view.set_scratch(True)
-        view.set_syntax_file('Packages/FileBrowser/dired_jumplist' + SYNTAX_EXTENSION)
+        view.set_syntax_file(JUMPLIST_SYNTAX_PATH)
         view.settings().set('line_numbers', False)
         view.settings().set('draw_centered', True)
         view.run_command('dired_jump_list_render')
@@ -200,10 +204,10 @@ class dired_project_next_line(TextCommand, DiredBaseCommand):
 class dired_project_select(TextCommand):
     def run(self, edit):
         pt = self.view.sel()[0].a
-        row, col = self.view.rowcol(pt)
+        row, _col = self.view.rowcol(pt)
         points = [[n, t] for n, t in jump_points()]
         current_project = [points[row - 3][1]]
-        settings = load_settings('dired.sublime-settings')
+        settings = load_settings(DIRED_SETTINGS)
         smart_jump = settings.get('dired_smart_jump', False)
         if smart_jump and len(self.view.window().views()) == 1:
             show(self.view.window(), current_project[0], record_history=True)

@@ -1,14 +1,11 @@
-#!/usr/bin/python
-# -*- coding: utf-8 -*-
-
 import os
-from os.path import join, expanduser
+from os.path import expanduser, join
 
 import sublime
 from sublime import Region
 from sublime_plugin import TextCommand, WindowCommand
 
-from .common import DiredBaseCommand
+from .lib.common import DiredBaseCommand
 
 NT = sublime.platform() == 'windows'
 map_window_to_ctx = {}
@@ -35,7 +32,7 @@ def isdir(u):
 
 def valid(value):
     if not isdir(value):
-        sublime.error_message('FileBrowser:\n\nDirectory doesn’t exist:\n%s' % value)
+        sublime.error_message(f'FileBrowser:\n\nDirectory doesn’t exist:\n{value}')
         return False
     else:
         return True
@@ -108,7 +105,6 @@ class dired_complete(TextCommand, DiredBaseCommand):
         eol = self.view.size()
         self.view.sel().clear()
         self.view.sel().add(Region(eol, eol))
-        return
 
     def get_content(self):
         content = expanduser(self.view.substr(self.prompt_region))
@@ -137,8 +133,8 @@ class dired_complete(TextCommand, DiredBaseCommand):
             sublime.error_message(
                 'FileBrowser:\n\n'
                 ' Content is unavailable\n\n'
-                '\t{0}\n\n\t{1}'
-                .format(path, error)
+                f'\t{path}\n\n\t{error}'
+                
             )
             return ([], True)
         completions = [n for n in dirs if n.upper().startswith(prefix.upper())]

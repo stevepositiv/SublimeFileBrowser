@@ -1,0 +1,164 @@
+{
+	"name": "Browse",
+	"globals":
+	{
+		"background": "#d9dee5",
+		"foreground": "#222222",
+		"caret": "#367cc055",
+		"line_highlight": "#367cc055",
+		"gutter": "#d9dee5",
+		"invisibles": "#88222233",
+		"selection": "#22222233",
+		"selection_border": "#22222233",
+		"inactive_selection": "#22222219",
+		"shadow": "#d9dee5",
+		"shadow_width": 16
+	},
+	"rules":
+	[
+		{
+			"name": "Project Symbols > Star",
+			"scope": "punctuation.definition.projects.star.symbol.dired",
+			"foreground": "#7c8692"
+		},
+		{
+			"name": "Project Symbols > Chevron",
+			"scope": "punctuation.definition.projects.chevron.symbol.dired",
+			"foreground": "#7c869266"
+		},
+		{
+			"name": "Project Path",
+			"scope": "string.name.project_path.dired",
+			"foreground": "#707e8b"
+		},
+		{
+			"name": "File/Dir Symbols",
+			"scope": "punctuation.definition.directory.symbol.dired, punctuation.definition.file.symbol.dired, dired.item.parent_dir",
+			"foreground": "#7c8692"
+		},
+		{
+			"name": "Dir Slash",
+			"scope": "punctuation.definition.directory.slash.dired",
+			"foreground": "#919aa388"
+		},
+		{
+			"name": "File Extension",
+			"scope": "string.name.file.extension.dired",
+			"foreground": "#919aa3"
+		},
+		{
+			"name": "Dir Name",
+			"scope": "string.name.directory.dired, string.name.project.dired",
+			"font_style": "bold"
+		},
+		{
+			"name": "Header",
+			"scope": "header.dired",
+			"foreground": "#707e8b"
+		},
+		{
+			"name": "Header punctuations",
+			"scope": "header.dired punctuation.definition.separator.dired",
+			"foreground": "#6f798733"
+		},
+		{
+			"name": "Header Rename Mode Title",
+			"scope": "punctuation.definition.rename_mode",
+			"foreground": "#E99023"
+		},
+		{
+			"name": "Marked",
+			"scope": "dired.marked",
+			"foreground": "#FFFFFF",
+			"background": "#4b96d6"
+		},
+		{
+			"name": "Copied",
+			"scope": "dired.copied",
+			"foreground": "#222222",
+			"background": "#FF88BD66"
+		},
+		{
+			"name": "Cut",
+			"scope": "dired.cut",
+			"foreground": "#8D8899aa",
+			"background": "#d9dee4"
+		},
+		{
+			"name": "Hidden",
+			"scope": "dired.fileattr.hidden",
+			"foreground": "#8D99AA",
+			"background": "#d9dee5"
+		},
+		{
+			"name": "System",
+			"scope": "dired.fileattr.system",
+			"foreground": "#D6774B",
+			"background": "#d9dee5"
+		},
+
+		// HELP -----------------------------
+		{
+			"name": "Help: Table Name",
+			"scope": "dired.help.header",
+			"foreground": "#707E8B",
+			"font_style": "bold"
+		},
+		{
+			"name": "Help: Table Header",
+			"scope": "dired.table.th",
+			"background": "#4B96D6"
+		},
+		{
+			"name": "Help: Table Header > Title",
+			"scope": "dired.table.th title",
+			"foreground": "#FFFFFF"
+		},
+		{
+			"name": "Help: Table Header",
+			"scope": "dired.table.tr",
+			"background": "#FFFFFF"
+		},
+		{
+			"name": "Help: Table punctuations",
+			"scope": "dired.table.punctuations",
+			"foreground": "#d9dee5",
+			"background": "#d9dee5"
+		},
+		{
+			"name": "Help: Shortcut",
+			"scope": "dired.table.tr command_shortcut",
+			"foreground": "#D6774B",
+			"font_style": "bold"
+		},
+		{
+			"name": "Help: Command Description",
+			"scope": "dired.table.tr command_desc",
+			"foreground": "#000000"
+		},
+		// /HELP ----------------------------
+
+		{
+			"name": "Error",
+			"scope": "string.error.dired",
+			"foreground": "#aa0000"
+		},
+		{
+			"name": "VCS Modified",
+			"scope": "item.modified.dired",
+			"foreground": "#F09609",
+			"background": "#d9dee0"
+		},
+		{
+			"name": "VCS Untracked",
+			"scope": "item.untracked.dired",
+			"foreground": "#00c406",
+			"background": "#d9dee0"
+		},
+		{
+			"name": "VCS Colorblind",
+			"scope": "item.colorblind.dired",
+			"background": "#000000"
+		}
+	]
+}

@@ -1,19 +1,28 @@
 from __future__ import annotations
+
 import os
+
 import sublime
 
-from .common import first, set_proper_scheme, calc_width, get_group, history_push
-SYNTAX_EXTENSION = '.sublime-syntax'
+from .common import (
+    DIRED_SETTINGS,
+    SYNTAX_PATH,
+    calc_width,
+    first,
+    get_group,
+    history_push,
+    set_proper_scheme,
+)
 
 
 def create_dired_view(window: sublime.Window) -> sublime.View:
     """Create and return a new, empty dired view for the given window."""
     view = window.new_file()
-    dired_settings = sublime.load_settings('dired.sublime-settings')
+    dired_settings = sublime.load_settings(DIRED_SETTINGS)
     if not dired_settings.get('dired_enable_stock_sublime_history', False):
         view.settings().set('is_widget', True)
     view.settings().add_on_change('color_scheme', lambda: set_proper_scheme(view))
-    view.set_syntax_file('Packages/FileBrowser/dired' + SYNTAX_EXTENSION)
+    view.set_syntax_file(SYNTAX_PATH)
     view.set_scratch(True)
     return view
 

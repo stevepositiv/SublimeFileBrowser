@@ -5,9 +5,9 @@ from __future__ import annotations
 import ctypes
 import os
 import time
+from collections.abc import Sequence
 from ctypes import wintypes
-from typing import NamedTuple, Sequence
-
+from typing import NamedTuple
 
 CF_UNICODETEXT = 13
 CF_HDROP = 15

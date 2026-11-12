@@ -1,0 +1,77 @@
+{
+	"name": "Browse",
+	"globals":
+	{
+		"background": "#d9dee5",
+		"foreground": "#222222",
+		"caret": "#E99023",
+		"gutter": "#d9dee5",
+		"invisibles": "#88222233",
+		"line_highlight": "#367cc000",
+		"selection": "#22222233",
+		"selection_border": "#22222233",
+		"inactive_selection": "#22222219",
+		"shadow": "#d9dee5",
+		"shadow_width": 16
+	},
+	"rules":
+	[
+		{
+			"name": "File/Dir Symbols",
+			"scope": "punctuation.definition.directory.symbol.dired, punctuation.definition.file.symbol.dired, dired.item.parent_dir",
+			"foreground": "#7c8692"
+		},
+		{
+			"name": "Dir Slash",
+			"scope": "punctuation.definition.directory.slash.dired",
+			"foreground": "#919aa388"
+		},
+		{
+			"name": "File Extension",
+			"scope": "string.name.file.extension.dired",
+			"foreground": "#919aa3"
+		},
+		{
+			"name": "Dir Name",
+			"scope": "string.name.directory.dired, string.name.project.dired",
+			"font_style": "bold"
+		},
+		{
+			"name": "Header",
+			"scope": "header.dired",
+			"foreground": "#707e8b"
+		},
+		{
+			"name": "Header punctuations",
+			"scope": "header.dired punctuation.definition.separator.dired",
+			"foreground": "#6f798733"
+		},
+		{
+			"name": "Header Rename Mode Title",
+			"scope": "punctuation.definition.rename_mode",
+			"foreground": "#E99023"
+		},
+		{
+			"name": "Error",
+			"scope": "string.error.dired",
+			"foreground": "#aa0000"
+		},
+		{
+			"name": "VCS Modified",
+			"scope": "item.modified.dired",
+			"foreground": "#F09609",
+			"background": "#d9dee0"
+		},
+		{
+			"name": "VCS Untracked",
+			"scope": "item.untracked.dired",
+			"foreground": "#00c406",
+			"background": "#d9dee0"
+		},
+		{
+			"name": "VCS Colorblind",
+			"scope": "item.colorblind.dired",
+			"background": "#000000"
+		}
+	]
+}

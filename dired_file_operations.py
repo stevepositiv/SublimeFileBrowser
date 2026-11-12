@@ -1,30 +1,36 @@
-# coding: utf8
-
 '''This module contains all commands for operations with files:
     create, delete, rename, copy, and move
 '''
 
+import itertools
 import os
 import shutil
 import tempfile
-import itertools
 import threading
-from os.path import basename, dirname, isdir, isfile, exists, join
+from os.path import basename, dirname, exists, isdir, isfile, join
 
 import sublime
 from sublime import Region
 from sublime_plugin import TextCommand
 
-from .common import (
-    DiredBaseCommand, relative_path, emit_event,
-    NT, PARENT_SYM, MARK_OPTIONS)
-from . import prompt
-from .busy_spinner import busy_indicator
+from . import dired_prompt as prompt
+from .lib.busy_spinner import busy_indicator
+from .lib.common import (
+    DIRED_SETTINGS,
+    MARK_OPTIONS,
+    NT,
+    PARENT_SYM,
+    DiredBaseCommand,
+    emit_event,
+    relative_path,
+)
 
 if NT:
     import ctypes
     from ctypes import wintypes
+
     from Default.send2trash.plat_win import SHFILEOPSTRUCTW
+
     from .lib.windows_clipboard import (
         ClipboardBusyError,
         clear_file_clipboard,
@@ -333,7 +339,7 @@ class dired_copy_files(TextCommand, DiredBaseCommand):
         filenames = marked or self.get_selected(parent=False, full=True)
         if not filenames:
             return sublime.status_message('Nothing chosen')
-        settings  = sublime.load_settings('dired.sublime-settings')
+        settings  = sublime.load_settings(DIRED_SETTINGS)
         copy_list = settings.get('dired_to_copy', [])
         cut_list  = settings.get('dired_to_move', [])
         # The latest action wins when an item was already queued for the
@@ -348,7 +354,7 @@ class dired_copy_files(TextCommand, DiredBaseCommand):
         copy_list = list(dict.fromkeys(copy_list))
         settings.set('dired_to_move', cut_list)
         settings.set('dired_to_copy', copy_list)
-        sublime.save_settings('dired.sublime-settings')
+        sublime.save_settings(DIRED_SETTINGS)
         self.show_hidden = self.view.settings().get('dired_show_hidden_files', True)
         # Note: self.show_hidden seems to be unused/leftover
 
@@ -501,9 +507,9 @@ def _get_paste_sources(settings):
 
 class dired_clear_copy_cut_list(TextCommand):
     def run(self, edit, clear_system=True):
-        sublime.load_settings('dired.sublime-settings').set('dired_to_move', [])
-        sublime.load_settings('dired.sublime-settings').set('dired_to_copy', [])
-        sublime.save_settings('dired.sublime-settings')
+        sublime.load_settings(DIRED_SETTINGS).set('dired_to_move', [])
+        sublime.load_settings(DIRED_SETTINGS).set('dired_to_copy', [])
+        sublime.save_settings(DIRED_SETTINGS)
         if NT and clear_system:
             try:
                 clear_our_file_clipboard()

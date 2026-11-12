@@ -4,8 +4,8 @@ import tempfile
 import sublime
 from unittesting import DeferrableViewTestCase
 
-from FileBrowser.common import PARENT_SYM
-from FileBrowser.show import retarget_dired_view
+from FileBrowser.lib.common import PARENT_SYM, SYNTAX_PATH
+from FileBrowser.lib.show import retarget_dired_view
 
 
 class HeaderNavigationTest(DeferrableViewTestCase):
@@ -129,7 +129,7 @@ class HeaderNavigationTest(DeferrableViewTestCase):
         os.mkdir(self.folder)
         with open(self.file, 'w'):
             pass
-        self.view.assign_syntax('Packages/FileBrowser/dired.sublime-syntax')
+        self.view.assign_syntax(SYNTAX_PATH)
         self.view.settings().set('dired_autorefresh', False)
         self.view.settings().set('dired_header', True)
         self.view.settings().set('dired_show_parent', True)

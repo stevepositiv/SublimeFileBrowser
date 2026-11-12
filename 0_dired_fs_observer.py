@@ -17,7 +17,7 @@ That is why this module must be loaded first, but its presence is checked in the
 '''
 
 from __future__ import annotations
-from itertools import chain
+
 import os
 import queue
 import stat
@@ -25,6 +25,8 @@ import threading
 import time
 import traceback
 import warnings
+from itertools import chain
+from textwrap import dedent
 
 import sublime
 
@@ -32,8 +34,12 @@ try:  # unavailable dependencies shall not break basic functionality
     with warnings.catch_warnings():
         warnings.filterwarnings('ignore', 'Failed to import fsevents')
         from watchdog.observers import Observer
+    from watchdog.events import (
+        DirModifiedEvent,
+        FileModifiedEvent,
+        FileSystemEventHandler,
+    )
     from watchdog.observers.api import ObservedWatch
-    from watchdog.events import FileSystemEventHandler, DirModifiedEvent, FileModifiedEvent
     if Observer.__name__ == 'KqueueObserver':
         # On macOS without watchdog's compiled FSEvents module.  kqueue holds a file
         # descriptor per entry of each watched directory, polling our few watches is

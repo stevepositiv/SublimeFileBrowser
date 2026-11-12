@@ -5,7 +5,7 @@ import unittest
 import sublime
 from unittesting import DeferrableTestCase
 
-from FileBrowser.common import prune_missing_cut_items
+from FileBrowser.lib.common import DIRED_SETTINGS, prune_missing_cut_items
 from FileBrowser.dired import existing_directories
 
 
@@ -17,7 +17,7 @@ class PruneMissingCutItemsTest(DeferrableTestCase):
             with open(source, 'w'):
                 pass
             self.settings.set('dired_to_move', [source])
-            sublime.save_settings('dired.sublime-settings')
+            sublime.save_settings(DIRED_SETTINGS)
             yield lambda: self.saved_cut_items() == [source]
 
             os.rename(source, destination)
@@ -32,7 +32,7 @@ class PruneMissingCutItemsTest(DeferrableTestCase):
             with open(source, 'w'):
                 pass
             self.settings.set('dired_to_move', [source])
-            sublime.save_settings('dired.sublime-settings')
+            sublime.save_settings(DIRED_SETTINGS)
             yield lambda: self.saved_cut_items() == [source]
             modified = os.stat(self.settings_path).st_mtime_ns
 
@@ -44,10 +44,8 @@ class PruneMissingCutItemsTest(DeferrableTestCase):
             self.assertEqual(os.stat(self.settings_path).st_mtime_ns, modified)
 
     def setUp(self):
-        self.settings = sublime.load_settings('dired.sublime-settings')
-        self.settings_path = os.path.join(
-            sublime.packages_path(), 'User', 'dired.sublime-settings'
-        )
+        self.settings = sublime.load_settings(DIRED_SETTINGS)
+        self.settings_path = os.path.join(sublime.packages_path(), 'User', DIRED_SETTINGS)
         self.had_cut_items = self.settings.has('dired_to_move')
         self.original_cut_items = self.settings.get('dired_to_move')
         if os.path.exists(self.settings_path):

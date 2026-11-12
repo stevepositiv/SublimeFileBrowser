@@ -4,7 +4,8 @@ import tempfile
 import sublime
 from unittesting import DeferrableViewTestCase
 
-from FileBrowser.show import retarget_dired_view
+from FileBrowser.lib.common import SYNTAX_PATH
+from FileBrowser.lib.show import retarget_dired_view
 
 
 class HorizontalNavigationTest(DeferrableViewTestCase):
@@ -304,7 +305,7 @@ class HorizontalNavigationTest(DeferrableViewTestCase):
         for path in (self.first, self.second, self.child):
             with open(path, 'w'):
                 pass
-        self.view.assign_syntax('Packages/FileBrowser/dired.sublime-syntax')
+        self.view.assign_syntax(SYNTAX_PATH)
         self.view.settings().set('dired_autorefresh', False)
         self.view.settings().set('dired_header', False)
         self.view.settings().set('dired_show_parent', False)

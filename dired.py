@@ -1,23 +1,36 @@
 '''Main module; launch and navigation related stuff'''
 from __future__ import annotations
-from collections import defaultdict
+
 import os
-from os.path import basename, dirname, isdir, exists, join
+import stat
 import sys
-from textwrap import dedent
+from collections import defaultdict
 from datetime import datetime
+from os.path import basename, dirname, exists, isdir, join
+from textwrap import dedent
+
 import sublime
 from sublime import Region
-from sublime_plugin import EventListener, WindowCommand, TextCommand
+from sublime_plugin import EventListener, TextCommand, WindowCommand
 
-from .common import (
-    DiredBaseCommand, ListingItem, calc_width, display_path, emit_event, get_group, hijack_window,
-    history_replace, set_proper_scheme, NT, PARENT_SYM, rx_fuzzy_match,
-    FILE_ATTRIBUTE_HIDDEN, FILE_ATTRIBUTE_SYSTEM)
-from . import prompt
-from .show import show, create_dired_view, retarget_dired_view
-from .jumping import jump_names
-
+from . import dired_prompt as prompt
+from .dired_jump import jump_names
+from .lib.common import (
+    DIRED_SETTINGS,
+    NT,
+    PARENT_SYM,
+    DiredBaseCommand,
+    ListingItem,
+    calc_width,
+    display_path,
+    emit_event,
+    get_group,
+    hijack_window,
+    history_replace,
+    rx_fuzzy_match,
+    set_proper_scheme,
+)
+from .lib.show import create_dired_view, retarget_dired_view, show
 
 ICON    = '𝌆'
 SEPARATOR = '\u200b'
@@ -27,7 +40,7 @@ MIN_NAME_COL_WIDTH = 10
 
 
 def reuse_view():
-    return sublime.load_settings('dired.sublime-settings').get('dired_reuse_view', False)
+    return sublime.load_settings(DIRED_SETTINGS).get('dired_reuse_view', False)
 
 
 def plugin_loaded():
@@ -47,9 +60,9 @@ def plugin_loaded():
              • If you installed via Package Control, make sure to restart Sublime Text often enough
                to give it a chance to install the required dependencies.
              • If you installed manually, then refer the Readme on how to install dependencies as well.
-        '''))  # noqa: E501
+        '''))
 
-    settings = sublime.load_settings('dired.sublime-settings')
+    settings = sublime.load_settings(DIRED_SETTINGS)
     settings.add_on_change(
         'dired_autorefresh',
         lambda: emit_event('toggle_watch_all', settings.get('dired_autorefresh', None))
@@ -57,7 +70,7 @@ def plugin_loaded():
 
 
 def plugin_unloaded():
-    sublime.load_settings('dired.sublime-settings').clear_on_change('dired_autorefresh')
+    sublime.load_settings(DIRED_SETTINGS).clear_on_change('dired_autorefresh')
 
 
 class dired(WindowCommand):
@@ -137,7 +150,7 @@ class dired(WindowCommand):
         for i, f in enumerate(folders):
             name     = names[i]
             offset   = ' ' * (longest_name - len(name) + 1)
-            names[i] = '%s%s%s' % (name, offset, display_path(f))
+            names[i] = f'{name}{offset}{display_path(f)}'
 
         self.window.show_quick_panel(
             names,
@@ -146,7 +159,7 @@ class dired(WindowCommand):
         )
 
     def _fallback_path(self) -> str:
-        if view := self.window.active_view():
+        if view := self.window.active_view():  # noqa: SIM102
             if repo_path := view.settings().get("git_savvy.repo_path"):
                 return repo_path
 
@@ -158,7 +171,7 @@ class dired(WindowCommand):
         folders = self.window.folders()
         for f in folders:
             # e.g. ['/a', '/aa'], to open '/aa/f' we need '/aa/'
-            if fpath.startswith(''.join([f, os.sep])):
+            if fpath.startswith(f'{f}{os.sep}'):
                 return f
 
     def _show_folder(self, index, folders, single_pane, other_group):
@@ -235,7 +248,7 @@ class dired_refresh(TextCommand, DiredBaseCommand):
                 (
                     'FileBrowser:\n\n'
                     'Directory does not exist:\n\n'
-                    '\t{0}\n\nTry to go up?'.format(path)
+                    f'\t{path}\n\nTry to go up?'
                 ),
                 'Go'
             ):
@@ -277,9 +290,8 @@ class dired_refresh(TextCommand, DiredBaseCommand):
         '''
         to_expand = to_expand or []
         root = self.get_path()
-        if os.path.isabs(goto):
-            if not goto.startswith(root):
-                return to_expand
+        if os.path.isabs(goto) and not goto.startswith(root):
+            return to_expand
 
         if not os.path.isabs(goto):
             if not root:
@@ -314,7 +326,7 @@ class dired_refresh(TextCommand, DiredBaseCommand):
             self.view.insert(
                 edit,
                 self.view.line(self.view.sel()[0]).b,
-                '\t<%s>' % err
+                f'\t<{err}>'
             )
             self.view.set_read_only(True)
             return
@@ -388,34 +400,31 @@ class dired_refresh(TextCommand, DiredBaseCommand):
         header = s.get('dired_header', False)
         name = jump_names().get(path or self.path)
         display_path = _format_path_for_display(path or self.path, s)
-        caption_base = "{0} → {1}".format(name, display_path) if name else display_path
+        caption_base = f"{name} → {display_path}" if name else display_path
         extras = ''
         # If filters are active, show them in the header, e.g. [*.py] [foo]
-        if header:
-            if s.get('dired_filter_enabled', True):
-                ext = s.get('dired_filter_extension') or ''
-                if ext:
-                    extras += "  [*{0}]".format(ext)
-                flt = s.get('dired_filter') or ''
-                if flt:
-                    extras += "  [{0}]".format(flt)
+        if header and s.get('dired_filter_enabled', True):
+            ext = s.get('dired_filter_extension') or ''
+            if ext:
+                extras += f"  [*{ext}]"
+            flt = s.get('dired_filter') or ''
+            if flt:
+                extras += f"  [{flt}]"
         caption_full = caption_base + extras
         if header:
             text = [caption_full, '—' * len(caption_full)]
         else:
             text = []
-        if not path:
-            title = '%s %s' % (ICON, name or 'This PC')
-        else:
+
+        if path:
+            disp_path = ''
             norm_path = path.rstrip(os.sep)
             if self.view.settings().get('dired_show_full_path', False):
-                title = '%s %s (%s)' % (
-                    ICON,
-                    name or basename(norm_path),
-                    _format_path_for_display(norm_path, s),
-                )
-            else:
-                title = '%s %s' % (ICON, name or basename(norm_path))
+                disp_path = f'({_format_path_for_display(norm_path, s)})'
+            title = f'{ICON} {name or basename(norm_path)} {disp_path}'
+        else:
+            title = f'{ICON} {name or 'This PC'}'
+
         self.view.set_name(title)
         return (text, header)
 
@@ -556,7 +565,7 @@ class dired_select(TextCommand, DiredBaseCommand):
             return window.open_file(fqn, sublime.FORCE_GROUP, group=-1)
         else:
             sublime.status_message(
-                'File does not exist ({0})'.format((basename(fqn.rstrip(os.sep)) or fqn))
+                f'File does not exist ({basename(fqn.rstrip(os.sep)) or fqn})'
             )
         return None
 
@@ -698,7 +707,7 @@ class dired_preview(dired_select):
                 when_loaded(other_view, lambda: window.focus_view(dired_view))
         else:
             sublime.status_message(
-                'File does not exist ({0})'.format(basename(fqn.rstrip(os.sep)) or fqn))
+                f'File does not exist ({basename(fqn.rstrip(os.sep)) or fqn})')
 
 
 views_yet_to_get_loaded = defaultdict(list)
@@ -890,7 +899,7 @@ class dired_expand(TextCommand, DiredBaseCommand):
         but for many directories call refresh command'''
         # Capture current marks and selection (by path) for later restoration
         marked_paths = self.view.settings().get('dired_marked_paths') or []
-        current_sel = list(self.view.sel())[0]
+        current_sel = next(iter(self.view.sel()))
 
         # Use the index to find the exact line for `path`
         self.load_index()
@@ -941,8 +950,8 @@ class dired_expand(TextCommand, DiredBaseCommand):
             except OSError:
                 pass
             else:
-                root_hidden = bool(root_attrs & FILE_ATTRIBUTE_HIDDEN)
-                root_system = bool(root_attrs & FILE_ATTRIBUTE_SYSTEM)
+                root_hidden = bool(root_attrs & stat.FILE_ATTRIBUTE_HIDDEN)
+                root_system = bool(root_attrs & stat.FILE_ATTRIBUTE_SYSTEM)
         root_entry = ListingItem(
             display_name,
             path,

@@ -2,6 +2,8 @@ import unittest
 
 import sublime
 
+from FileBrowser.lib.common import ROOT
+
 
 class FileBrowserKeybindingsTest(unittest.TestCase):
     def test_space_uses_a_character_binding_for_toggle_and_move(self):
@@ -39,7 +41,7 @@ class FileBrowserKeybindingsTest(unittest.TestCase):
 
     def setUp(self):
         self.bindings = sublime.decode_value(
-            sublime.load_resource('Packages/FileBrowser/Default.sublime-keymap')
+            sublime.load_resource(f'{ROOT}/Default.sublime-keymap')
         )
 
     def binding_for(self, key):
