@@ -1,30 +1,36 @@
-# coding: utf8
-
 '''This module contains all commands for operations with files:
     create, delete, rename, copy, and move
 '''
 
+import itertools
 import os
 import shutil
 import tempfile
-import itertools
 import threading
-from os.path import basename, dirname, isdir, isfile, exists, join
+from os.path import basename, dirname, exists, isdir, isfile, join
 
 import sublime
 from sublime import Region
 from sublime_plugin import TextCommand
 
-from .common import (
-    DiredBaseCommand, relative_path, emit_event,
-    NT, PARENT_SYM, MARK_OPTIONS)
-from . import prompt
-from .busy_spinner import busy_indicator
+from . import dired_prompt as prompt
+from .lib.busy_spinner import busy_indicator
+from .lib.common import (
+    DIRED_SETTINGS,
+    MARK_OPTIONS,
+    NT,
+    PARENT_SYM,
+    DiredBaseCommand,
+    emit_event,
+    relative_path,
+)
 
 if NT:
     import ctypes
     from ctypes import wintypes
+
     from Default.send2trash.plat_win import SHFILEOPSTRUCTW
+
     from .lib.windows_clipboard import (
         ClipboardBusyError,
         clear_file_clipboard,
@@ -103,8 +109,7 @@ class dired_create_and_open(dired_create):
 
 
 class dired_delete(TextCommand, DiredBaseCommand):
-    '''Send the marked or selected items to the trash'''
-    def run(self, edit):
+    def run(self, edit, trash=False):
         view = self.view
         window = view.window()
         assert window
@@ -119,8 +124,9 @@ class dired_delete(TextCommand, DiredBaseCommand):
         else:
             msg = "Delete {0} items?".format(len(files))
 
+        view.settings().get('dired_confirm_delete', True)
         if (
-            view.settings().get('dired_confirm_deletions', True)
+            view.settings().get('dired_confirm_delete', True)
             and not sublime.ok_cancel_dialog(msg)
         ):
             return
@@ -333,7 +339,7 @@ class dired_copy_files(TextCommand, DiredBaseCommand):
         filenames = marked or self.get_selected(parent=False, full=True)
         if not filenames:
             return sublime.status_message('Nothing chosen')
-        settings  = sublime.load_settings('dired.sublime-settings')
+        settings  = sublime.load_settings(DIRED_SETTINGS)
         copy_list = settings.get('dired_to_copy', [])
         cut_list  = settings.get('dired_to_move', [])
         # The latest action wins when an item was already queued for the
@@ -348,7 +354,9 @@ class dired_copy_files(TextCommand, DiredBaseCommand):
         copy_list = list(dict.fromkeys(copy_list))
         settings.set('dired_to_move', cut_list)
         settings.set('dired_to_copy', copy_list)
-        sublime.save_settings('dired.sublime-settings')
+        sublime.save_settings(DIRED_SETTINGS)
+        self.show_hidden = self.view.settings().get('dired_show_hidden_files', True)
+        # Note: self.show_hidden seems to be unused/leftover
 
         if NT:
             try:
@@ -385,7 +393,7 @@ class dired_copy_files(TextCommand, DiredBaseCommand):
                 pass
 
         # Update status bar to reflect current clipboard and mark counts
-        self.update_status()
+        self.set_status()
 
 
 class dired_paste_files(TextCommand, DiredBaseCommand):
@@ -497,18 +505,11 @@ def _get_paste_sources(settings):
     return sources_move, sources_copy, None
 
 
-class dired_clear(TextCommand):
-    '''Unmark all items and empty the copy/cut list'''
-    def run(self, edit):
-        self.view.run_command('dired_mark', {'mark': False, 'markall': True})
-        self.view.run_command('dired_clear_copy_cut_list')
-
-
 class dired_clear_copy_cut_list(TextCommand):
     def run(self, edit, clear_system=True):
-        sublime.load_settings('dired.sublime-settings').set('dired_to_move', [])
-        sublime.load_settings('dired.sublime-settings').set('dired_to_copy', [])
-        sublime.save_settings('dired.sublime-settings')
+        sublime.load_settings(DIRED_SETTINGS).set('dired_to_move', [])
+        sublime.load_settings(DIRED_SETTINGS).set('dired_to_copy', [])
+        sublime.save_settings(DIRED_SETTINGS)
         if NT and clear_system:
             try:
                 clear_our_file_clipboard()
@@ -541,6 +542,10 @@ class call_SHFileOperationW(object):
     ):
         self.view = view
         self.clipboard_sequence = clipboard_sequence
+        if destination == '$TRASH$':
+            self.shfow_d_thread = threading.Thread(target=self.caller, args=(3, sources_move, ''))
+            self.shfow_d_thread.start()
+            return
         if sources_move:
             self.shfow_m_thread = threading.Thread(
                 target=self.caller, args=(1, sources_move, destination))
@@ -564,9 +569,14 @@ class call_SHFileOperationW(object):
                 self.shfow_c_thread.start()
 
     def caller(self, mode, sources, destination, duplicate=False):
-        '''mode is int: 1 (move), 2 (copy)'''
+        '''mode is int: 1 (move), 2 (copy), 3 (delete)'''
 
-        fFlags = 8 if duplicate else 0  # FOF_RENAMEONCOLLISION
+        if duplicate:
+            fFlags = 8
+        elif mode == 3:
+            fFlags = 64  # send to recycle bin
+        else:
+            fFlags = 0
 
         SHFileOperationW = ctypes.windll.shell32.SHFileOperationW
         SHFileOperationW.argtypes = [ctypes.POINTER(SHFILEOPSTRUCTW)]
@@ -750,7 +760,7 @@ class call_SystemAgnosticFileOperation(object):
             if not before: dir = 1
             i += dir
             self.view.set_status(
-                '__0FileBrowser__',
+                '__FileBrowser__',
                 'Please wait{0}…{1}Writing {2}'.format(
                     ' ' * before,
                     ' ' * after,
@@ -760,7 +770,6 @@ class call_SystemAgnosticFileOperation(object):
             sublime.set_timeout(lambda: self.progress_bar(threads, i, dir), 100)
             return
         else:
-            self.view.erase_status('__0FileBrowser__')
             emit_event('watch_view', self.view.id())
             self.view.run_command(
                 'dired_clear_copy_cut_list', {'clear_system': False}

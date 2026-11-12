@@ -1,152 +1,76 @@
 import os
 import tempfile
 import unittest
-from unittest import mock
 
-from FileBrowser import common, dired
+import sublime
+from unittesting import DeferrableTestCase
+
+from FileBrowser.lib.common import DIRED_SETTINGS, prune_missing_cut_items
 from FileBrowser.dired import existing_directories
 
 
-class AutorefreshSettingsTest(unittest.TestCase):
-    def test_unrelated_settings_changes_do_not_toggle_watches(self):
-        self.values['dired_to_copy'] = ['/audit/file']
-        self.callback()
-        self.values['dired_show_hidden_files'] = False
-        self.callback()
+class PruneMissingCutItemsTest(DeferrableTestCase):
+    def test_discards_file_moved_by_an_external_application(self):
+        with tempfile.TemporaryDirectory() as root:
+            source = os.path.join(root, 'source.txt')
+            destination = os.path.join(root, 'destination.txt')
+            with open(source, 'w'):
+                pass
+            self.settings.set('dired_to_move', [source])
+            sublime.save_settings(DIRED_SETTINGS)
+            yield lambda: self.saved_cut_items() == [source]
 
-        self.emit_event.assert_not_called()
+            os.rename(source, destination)
 
-    def test_emits_once_per_value_change_including_setting_removal(self):
-        for value in (False, True, None, False):
-            if value is None:
-                self.values.pop('dired_autorefresh')
-            else:
-                self.values['dired_autorefresh'] = value
-            self.callback()
-            self.callback()
+            self.assertEqual(prune_missing_cut_items(), [])
+            self.assertEqual(self.settings.get('dired_to_move'), [])
+            yield lambda: self.saved_cut_items() == []
 
-        self.assertEqual(self.emit_event.call_args_list, [
-            mock.call('toggle_watch_all', False),
-            mock.call('toggle_watch_all', True),
-            mock.call('toggle_watch_all', None),
-            mock.call('toggle_watch_all', False),
-        ])
+    def test_preserves_existing_items_without_saving(self):
+        with tempfile.TemporaryDirectory() as root:
+            source = os.path.join(root, 'source.txt')
+            with open(source, 'w'):
+                pass
+            self.settings.set('dired_to_move', [source])
+            sublime.save_settings(DIRED_SETTINGS)
+            yield lambda: self.saved_cut_items() == [source]
+            modified = os.stat(self.settings_path).st_mtime_ns
 
-    def test_reentrant_notification_does_not_repeat_the_toggle(self):
-        def notify_again(*args):
-            self.emit_event.side_effect = None
-            self.callback()
+            self.assertEqual(prune_missing_cut_items(), [source])
+            self.assertEqual(self.settings.get('dired_to_move'), [source])
+            yield 100
 
-        self.emit_event.side_effect = notify_again
-        self.values['dired_autorefresh'] = False
-        self.callback()
-
-        self.emit_event.assert_called_once_with('toggle_watch_all', False)
+            self.assertEqual(self.saved_cut_items(), [source])
+            self.assertEqual(os.stat(self.settings_path).st_mtime_ns, modified)
 
     def setUp(self):
-        self.values = {'dired_autorefresh': True}
-        api_patcher = mock.patch.object(dired, 'sublime')
-        self.addCleanup(api_patcher.stop)
-        api = api_patcher.start()
-        api.windows.return_value = []
-        settings = api.load_settings.return_value
-        settings.get.side_effect = self.values.get
-        emit_patcher = mock.patch.object(dired, 'emit_event')
-        self.addCleanup(emit_patcher.stop)
-        self.emit_event = emit_patcher.start()
+        self.settings = sublime.load_settings(DIRED_SETTINGS)
+        self.settings_path = os.path.join(sublime.packages_path(), 'User', DIRED_SETTINGS)
+        self.had_cut_items = self.settings.has('dired_to_move')
+        self.original_cut_items = self.settings.get('dired_to_move')
+        if os.path.exists(self.settings_path):
+            with open(self.settings_path, 'rb') as settings_file:
+                self.original_file = settings_file.read()
+        else:
+            self.original_file = None
+        self.addCleanup(self.restore_settings)
 
-        dired.plugin_loaded()
+    def saved_cut_items(self):
+        if not os.path.exists(self.settings_path):
+            return None
+        with open(self.settings_path, encoding='utf-8') as settings_file:
+            return sublime.decode_value(settings_file.read()).get('dired_to_move')
 
-        tag, self.callback = settings.add_on_change.call_args.args
-        self.assertEqual(tag, 'dired_autorefresh')
-        self.emit_event.assert_not_called()
-
-
-class StatusTest(unittest.TestCase):
-    def test_reports_counts_without_probing_or_pruning_paths(self):
-        view_settings = {
-            'dired_path': '/audit/',
-            'dired_show_hidden_files': False,
-            'dired_filter': 'needle',
-            'dired_marked_paths': ['/unavailable/file', '/unavailable/folder/'],
-            'dired_to_copy': ['/unavailable/copy'],
-        }
-        clipboard_settings = {
-            'dired_to_copy': ['/unavailable/copy'],
-            'dired_to_move': ['/missing/one', '/missing/two', '/missing/three'],
-        }
-        command = common.DiredBaseCommand()
-        command.view = mock.Mock()
-        command.view.settings.return_value.get.side_effect = view_settings.get
-        command.view.window.return_value.folders.return_value = ['/audit']
-
-        with mock.patch.object(common, 'sublime') as api, \
-                mock.patch.object(common, 'os') as filesystem, \
-                mock.patch.object(common, 'isdir', side_effect=AssertionError('isdir called')):
-            settings = api.load_settings.return_value
-            settings.get.side_effect = clipboard_settings.get
-            filesystem.path.lexists.side_effect = AssertionError('lexists called')
-            filesystem.path.getsize.side_effect = AssertionError('getsize called')
-            filesystem.stat.side_effect = AssertionError('stat called')
-
-            command.set_status()
-
-            command.view.set_status.assert_called_once_with(
-                '__FileBrowser__',
-                '[?: Help, I: Disable Filter, u: Unmark All, ctrl+space: Clear Clipboard] '
-                'Project root, Hidden: Off' + (', System: On' if common.NT else '') +
-                ', marked(2), copied(1), cut(3)',
-            )
-            settings.set.assert_not_called()
-            api.save_settings.assert_not_called()
-            filesystem.assert_not_called()
-            self.assertEqual(filesystem.mock_calls, [])
-
-
-class CachedStatusTest(unittest.TestCase):
-    def test_renders_cached_sizes_without_recomputing_them(self):
-        command = common.DiredBaseCommand()
-        command.view = mock.Mock()
-        view_settings = {
-            'dired_path': '/audit/',
-            'dired_marked_paths': ['/audit/one', '/audit/two'],
-        }
-        clipboard_settings = {
-            'dired_to_copy': ['/elsewhere/copy'],
-            'dired_to_move': ['/elsewhere/cut'],
-        }
-        command.view.settings.return_value.get.side_effect = view_settings.get
-        command.view.window.return_value.folders.return_value = []
-        with mock.patch.object(common, 'sublime') as api, \
-                mock.patch.object(common, 'status', create=True) as summaries, \
-                mock.patch.object(common, 'os') as filesystem, \
-                mock.patch.object(common, 'isdir', side_effect=AssertionError('isdir called')):
-            api.load_settings.return_value.get.side_effect = clipboard_settings.get
-            summaries.cached_size.side_effect = lambda view, kind, paths: {
-                'marked': 2048, 'copied': 3 * 1024 * 1024, 'cut': 512,
-            }[kind]
-
-            for nt, show_system, indicator in (
-                (False, False, ''),
-                (False, True, ''),
-                (True, False, ', System: Off'),
-                (True, True, ', System: On'),
-            ):
-                with self.subTest(nt=nt, show_system=show_system), \
-                        mock.patch.object(common, 'NT', nt):
-                    view_settings['dired_show_system_files'] = show_system
-                    command.set_status()
-                    command.set_status()
-
-                    self.assertEqual(command.view.set_status.call_args, mock.call(
-                        '__FileBrowser__',
-                        '[?: Help, u: Unmark All, ctrl+space: Clear Clipboard] '
-                        'Hidden: On' + indicator +
-                        ', marked(2; 2kB), copied(1; 3MB), cut(1; 512B)',
-                    ))
-            summaries.update.assert_not_called()
-            self.assertEqual(filesystem.mock_calls, [])
-            api.save_settings.assert_not_called()
+    def restore_settings(self):
+        if self.had_cut_items:
+            self.settings.set('dired_to_move', self.original_cut_items)
+        else:
+            self.settings.erase('dired_to_move')
+        if self.original_file is not None:
+            with open(self.settings_path, 'wb') as settings_file:
+                settings_file.write(self.original_file)
+        elif os.path.exists(self.settings_path):
+            os.remove(self.settings_path)
 
 
 class ExistingDirectoriesTest(unittest.TestCase):

@@ -1,27 +1,43 @@
 '''Common stuff, used in other modules'''
+
 from __future__ import annotations
-import re
-import os
-import sys
-from os.path import isdir, join, basename
+
 import fnmatch
-from itertools import chain, repeat
+import os
+import re
+import stat
+import sys
+import time
+from collections.abc import Iterable
 from functools import lru_cache
-from typing import Iterable, NamedTuple
-from typing_extensions import TypeAlias
+from itertools import chain, repeat
+from os.path import basename, isdir, join
+from typing import NamedTuple, TypeAlias
 
 import sublime
 from sublime import Region
 
-from . import status
+PLTF = sublime.platform()
+NT   = PLTF == 'windows'
+LIN  = PLTF == 'linux'
+OSX  = PLTF == 'osx'
 
-flatten = chain.from_iterable
-PLATFORM = sublime.platform()
-NT = PLATFORM == 'windows'
-LIN = PLATFORM == 'linux'
-OSX = PLATFORM == 'osx'
-FILE_ATTRIBUTE_HIDDEN = 0x2
-FILE_ATTRIBUTE_SYSTEM = 0x4
+# Package Name {PKG} is determined by the foldername under Packages in
+#   Sublime Data Folder. (e.g. Packages/FileBrowser ==> FileBrowser)
+
+PKG = __name__.split('.')[0]
+
+DIRED_SETTINGS  = "dired.sublime-settings"
+RENAME_SETTINGS = "dired-rename-mode.sublime-settings"
+
+ROOT                    = f"Packages/{PKG}"
+SHORTCUTS_PATH          = f"{ROOT}/resources/SHORTCUTS.md"
+DIRED_SETTINGS_PATH     = f"{ROOT}/resources/{DIRED_SETTINGS}"
+RENAME_SETTINGS_PATH    = f"{ROOT}/resources/{RENAME_SETTINGS}"
+SYNTAX_PATH             = f"{ROOT}/resources/dired.sublime-syntax"
+COLOR_SCHEME_PATH       = f"{ROOT}/resources/dired.hidden-color-scheme"
+HELP_SYNTAX_PATH        = f"{ROOT}/resources/dired-help.sublime-syntax"
+JUMPLIST_SYNTAX_PATH    = f"{ROOT}/resources/dired-jumplist.sublime-syntax"
 
 
 class EntryInfo(NamedTuple):
@@ -55,6 +71,23 @@ RE_FILE = re.compile(r'^(\s*)([^\\//].*)$')
 PARENT_SYM = "⠤"
 
 
+def format_size_short(num_bytes: int) -> str:
+    """Return a compact human-readable size like '12kB' or '3MB'."""
+    if num_bytes <= 0:
+        return ""
+    units = ["B", "kB", "MB", "GB", "TB", "PB"]
+    size = float(num_bytes)
+    unit = 0
+    while size >= 1024.0 and unit < len(units) - 1:
+        size /= 1024.0
+        unit += 1
+    rounded = int(size + 0.5)
+    return f"{rounded}{units[unit]}"
+
+# Maximum acceptable time (seconds) for a single os.path.getsize call when
+# computing summary sizes for status-bar display. If a call exceeds this,
+# we abort size computation and show counts only.
+SIZE_STAT_TIMEOUT = 0.005
 _RE_SPLIT_DIGITS = re.compile(r'(\d+)')
 
 
@@ -91,9 +124,9 @@ def set_proper_scheme(view):
     # Since we cannot create file with syntax, there is moment when view has no settings,
     # but it is activated, so some plugins (e.g. Color Highlighter) set wrong color scheme
     if view.settings().get('dired_rename_mode', False):
-        dired_settings = sublime.load_settings('dired-rename-mode.sublime-settings')
+        dired_settings = sublime.load_settings(RENAME_SETTINGS)
     else:
-        dired_settings = sublime.load_settings('dired.sublime-settings')
+        dired_settings = sublime.load_settings(DIRED_SETTINGS)
 
     color_scheme = dired_settings.get('color_scheme')
     if view.settings().get('color_scheme') == color_scheme:
@@ -195,7 +228,7 @@ def hijack_window():
     '''Execute on loading plugin or on new window open;
     allow to open FileBrowser automatically
     '''
-    settings = sublime.load_settings('dired.sublime-settings')
+    settings = sublime.load_settings(DIRED_SETTINGS)
     command = settings.get("dired_hijack_new_window")
     if command:
         if command == "jump_list":
@@ -208,10 +241,21 @@ def hijack_window():
 def emit_event(event_type: str, payload: object):
     '''Notify our filesystem observer about changes in our views'''
     # Look the observer up on each call, either module may have been reloaded since
-    fs_observer = sys.modules.get(f'{__package__}.0_dired_fs_observer')
+    fs_observer = sys.modules.get(f'{PKG}.dired_fs_observer')
     observer = getattr(fs_observer, 'observer', None)
     if observer:
         observer.post(event_type, payload)
+
+
+def prune_missing_cut_items():
+    """Discard cut items which have been moved or removed externally."""
+    settings = sublime.load_settings(DIRED_SETTINGS)
+    queued = settings.get('dired_to_move', []) or []
+    remaining = [path for path in queued if os.path.lexists(path)]
+    if remaining != queued:
+        settings.set('dired_to_move', remaining)
+        sublime.save_settings(DIRED_SETTINGS)
+    return remaining
 
 
 class DiredBaseCommand:
@@ -275,7 +319,7 @@ class DiredBaseCommand:
         for n in new_sels:
             self.view.sel().add(Region(n, n))
         name_point = new_sels[-1] if forward else new_sels[0]
-        surroundings = True if self.view.rowcol(name_point)[0] < 3 else False
+        surroundings = self.view.rowcol(name_point)[0] < 3
         self.view.show(name_point, surroundings)
 
     def next_line(self, forward, pt, filergn):
@@ -385,7 +429,7 @@ class DiredBaseCommand:
         '''
         return (
             line
-            for line in flatten(self.view.lines(r) for r in regions)
+            for line in chain.from_iterable(self.view.lines(r) for r in regions)
             if within.contains(line)
         )
 
@@ -407,20 +451,14 @@ class DiredBaseCommand:
             new_text = "⠤ [RENAME MODE]"
         self.view.insert(edit, start, new_text)
 
-    def update_status(self, *, refresh=False):
-        '''Update derived summaries when datasets change, then render cached data.'''
-        status.update(self.view, refresh=refresh)
-        self.set_status()
-
     def set_status(self):
-        '''Render current paths and cached summaries without probing or scheduling.'''
+        '''Update status-bar'''
         # if view is not focused, view.window() may be None
         window          = self.view.window() or sublime.active_window()
         path_in_project = any(folder == self.path[:-1] for folder in window.folders())
         settings        = self.view.settings()
-        clipboard       = sublime.load_settings('dired.sublime-settings')
-        copied_items    = clipboard.get('dired_to_copy') or []
-        cut_items       = clipboard.get('dired_to_move') or []
+        copied_items    = settings.get('dired_to_copy', [])
+        cut_items       = prune_missing_cut_items()
         marked_items    = settings.get('dired_marked_paths') or []
 
         # Derive hidden-files flag view settings if not set
@@ -438,20 +476,55 @@ class DiredBaseCommand:
         if marked_items:
             help_segments.append('u: Unmark All')
         if copied_items or cut_items:
-            help_segments.append('ctrl+space: Clear Clipboard')
-        help_segment = "[{0}] ".format(', '.join(help_segments))
+            help_segments.append('ctrl+z: Clear Clipboard')
+        help_segment = "[{}] ".format(', '.join(help_segments))
 
-        hidden_info = 'On' if show_hidden else 'Off'
-        if NT:
-            hidden_info += ", System: {}".format('On' if show_system else 'Off')
+        def format_mark(items, name):
+            if not items:
+                return ''
+            size = _total_size(items)
+            segments = [str(len(items))]
+            if size > 0:
+                segments.append(format_size_short(size))
+            return f', {name}({"; ".join(segments)})'
+
+        def format_hide(show_hidden, show_system, NT=NT):
+            if (NT):
+                # Format for Windows
+                hidden = 'On' if show_hidden else 'Off'
+                system = 'On' if show_system else 'Off'
+                return f"{hidden}, System: {system}"
+
+            # Format for others
+            return 'On' if show_hidden else 'Off'
+
+        def _total_size(paths):
+            total = 0
+            for p in paths:
+                if isdir(p):
+                    return 0
+                start = time.monotonic()
+                try:
+                    total += os.path.getsize(p)
+                except OSError:
+                    continue
+                else:
+                    if time.monotonic() - start > SIZE_STAT_TIMEOUT:
+                        return 0
+            return total
+
+        hidden_info = format_hide(show_hidden, show_system)
+        marked_info = format_mark(marked_items, 'marked')
+        copied_info = format_mark(copied_items, 'copied')
+        cut_info = format_mark(cut_items, 'cut')
 
         status = "{help}{root}Hidden: {hidden}{marked}{copied}{cut}".format(
             help=help_segment,
             root='Project root, ' if path_in_project else '',
             hidden=hidden_info,
-            marked=_format_status_items(self.view, 'marked', marked_items),
-            copied=_format_status_items(self.view, 'copied', copied_items),
-            cut=_format_status_items(self.view, 'cut', cut_items)
+            marked=marked_info,
+            copied=copied_info,
+            cut=cut_info
         )
         self.view.set_status("__FileBrowser__", status)
 
@@ -472,15 +545,31 @@ class DiredBaseCommand:
         for name in names:
             full_name = join(path, goto, name)
             if isdir(full_name):
-                index_dirs.append('%s%s' % (full_name, os.sep))
-                items.append(''.join([level, "▸ ", name, os.sep]))
+                index_dirs.append(f'{full_name}{os.sep}')
+                items.append(f'{level}▸ {name}{os.sep}')
             else:
                 index_files.append(full_name)
-                files.append(''.join([level, "≡ ", name]))
+                files.append(f'{level}≡ {name}')
         index = index_dirs + index_files
         self.index = self.index[:insert_at] + index + self.index[insert_at:]
         items += files
         return items
+
+    def is_hidden(self, filename, path, stat=None, exclude_patterns=[]):  # noqa: B006
+        # NOTE: is_hidden() seems to never get called in the codebase currently
+        if not path:  # special case for ThisPC
+            return False
+        if any(fnmatch.fnmatch(filename, pattern) for pattern in exclude_patterns):
+            return True
+        if not NT:
+            return False
+
+        try:
+            attrs = stat.st_file_attributes
+        except AttributeError:
+            return False
+        else:
+            return bool(attrs & stat.FILE_ATTRIBUTE_HIDDEN) or bool(attrs & stat.FILE_ATTRIBUTE_SYSTEM)
 
     def list_directory(self, path) -> tuple[list[str], str]:
         '''List entries in a directory or return an error.
@@ -536,7 +625,7 @@ class DiredBaseCommand:
         # Do not strip the separator for drive roots like "C:\", because turning that
         # into "C:" makes path resolution relative to the drive's CWD.
         if dir_path:
-            drive, tail = os.path.splitdrive(dir_path)
+            _drive, tail = os.path.splitdrive(dir_path)
             target = dir_path.rstrip(os.sep) if tail not in (os.sep, '') else dir_path
         else:
             target = dir_path
@@ -654,7 +743,7 @@ class DiredBaseCommand:
         else:
             pattern = r'^\s*≡ '
             sep = ''
-        return self.view.find_all('%s%s%s' % (pattern, fname, sep))
+        return self.view.find_all(f'{pattern}{fname}{sep}')
 
     def _add_sels(self, sels=None):
         fbs = self.view.find_by_selector
@@ -732,7 +821,7 @@ class DiredBaseCommand:
         """
         if copied is None or cut is None:
             # Merge from both global and view settings for robustness
-            g = sublime.load_settings('dired.sublime-settings')
+            g = sublime.load_settings(DIRED_SETTINGS)
             v = self.view.settings()
             if copied is None:
                 copied = (g.get('dired_to_copy') or []) or (v.get('dired_to_copy') or [])
@@ -843,27 +932,6 @@ class DiredBaseCommand:
             self.view.erase_regions(key)
 
 
-def _format_status_items(view, kind, paths):
-    if not paths:
-        return ''
-    size = status.cached_size(view, kind, paths)
-    size_info = f'; {format_size_short(size)}' if size else ''
-    return f', {kind}({len(paths)}{size_info})'
-
-
-def format_size_short(num_bytes: int) -> str:
-    """Return a compact human-readable size like '12kB' or '3MB'."""
-    if num_bytes <= 0:
-        return ''
-    units = ['B', 'kB', 'MB', 'GB', 'TB', 'PB']
-    size = float(num_bytes)
-    unit = 0
-    while size >= 1024.0 and unit < len(units) - 1:
-        size /= 1024.0
-        unit += 1
-    return f'{int(size + 0.5)}{units[unit]}'
-
-
 @lru_cache(maxsize=256)
 def _do_scandir(
     path: str,
@@ -900,8 +968,8 @@ def _do_scandir(
                 except AttributeError:
                     pass
                 else:
-                    hidden = bool(attrs & FILE_ATTRIBUTE_HIDDEN)
-                    system = bool(attrs & FILE_ATTRIBUTE_SYSTEM)
+                    hidden = bool(attrs & stat.FILE_ATTRIBUTE_HIDDEN)
+                    system = bool(attrs & stat.FILE_ATTRIBUTE_SYSTEM)
                     if not show_hidden and hidden or not show_system and system:
                         continue
 
@@ -960,7 +1028,7 @@ def rx_fuzzy_match(term: str, text: str) -> list[int]:
         ),
         [f'({re.escape(ch)})' for ch in term]
     )
-    pattern = ''.join(flatten(parts))
+    pattern = ''.join(chain.from_iterable(parts))
     if m := re.search(pattern, text, re.IGNORECASE):
         return [m.start(i + 1) for i in range(len(term))]
     return []
@@ -993,7 +1061,7 @@ def selected_paths(
     path = view.settings().get('dired_path')
     if path == 'ThisPC\\':
         path = ''
-    line_regions = flatten(view.lines(r) for r in view.sel())
+    line_regions = chain.from_iterable(view.lines(r) for r in view.sel())
     selected_rows = (view.rowcol(r.a)[0] for r in line_regions)
     len_index = len(index)
     selected_names = (
