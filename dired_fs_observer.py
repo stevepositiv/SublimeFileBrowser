@@ -107,7 +107,7 @@ def refresh(views, erase_settings=False):
                 v.run_command('dired_refresh')
 
 
-class ObservePaths(object):
+class ObservePaths:
     def __init__(self):
         self.observer = Observer()
         self.event_handler = ReportEvent()
@@ -132,7 +132,7 @@ class ObservePaths(object):
         while (item := self.events.get()) is not None:
             try:
                 self.dired_event_handler(*item)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 traceback.print_exc()
         self.observer.stop()
         self.observer.join()
@@ -201,7 +201,7 @@ class ObservePaths(object):
             for p in sorted(next_set - self.watches.keys()):
                 try:
                     self.watches[p] = self.observer.schedule(self.event_handler, p)
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     print(f"FileBrowser: can't watch {p}: {e}")
                     failed.add(p)
                 else:

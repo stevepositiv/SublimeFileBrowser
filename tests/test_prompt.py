@@ -1,9 +1,8 @@
 import os
 import tempfile
 
+from FileBrowser.dired_prompt import PromptContext, dired_prompt, map_window_to_ctx, start
 from unittesting import DeferrableViewTestCase
-
-from FileBrowser.dired_prompt import dired_prompt, map_window_to_ctx, PromptContext, start
 
 
 class DirectoryPromptTest(DeferrableViewTestCase):

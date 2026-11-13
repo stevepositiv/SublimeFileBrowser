@@ -43,7 +43,9 @@ class dired_jump(TextCommand, DiredBaseCommand):
     def run(self, edit, new_window=False):
         jp = jump_points()
         if not jp:
-            status_message("No jump points available. To create jump point for this directory use 'P'.")
+            status_message(
+                "No jump points available. To create jump point for this directory use 'P'."
+            )
             return
         # show_quick_panel didn't work with dict_items
         self.new_window = new_window
@@ -53,7 +55,7 @@ class dired_jump(TextCommand, DiredBaseCommand):
         for n, t in jp:
             offset = ' ' * (longest_name - len(n) + 1)
             path = self.display_path(t)
-            name = '%s%s%s' % (n, offset, path.rstrip(os.sep))
+            name = f'{n}{offset}{path.rstrip(os.sep)}'
             self.display_jump_points.append(name)
         self.view.window().show_quick_panel(
             self.display_jump_points,
@@ -69,7 +71,8 @@ class dired_jump(TextCommand, DiredBaseCommand):
             settings = load_settings(DIRED_SETTINGS)
             smart_jump = settings.get('dired_smart_jump', False)
             auto = self.new_window == 'auto'
-            if self.new_window is True or ((not smart_jump) and auto) or (smart_jump and auto and len(self.view.window().views()) > 0):
+            if self.new_window is True or ((not smart_jump) and auto) \
+                    or (smart_jump and auto and len(self.view.window().views()) > 0):
                 self.view.run_command("dired_open_in_new_window", {"project_folder": [target]})
             else:
                 show(self.view.window(), target, reuse_view=self.view, record_history=True)
@@ -145,7 +148,11 @@ class dired_jump_list_render(TextCommand):
             self.max_len_names = max([len(n) for n, _ in jump_points()])
             self.view.settings().set('dired_project_count', len(self.names))
         else:
-            content += "Jump list is empty!\n\nAdd a folder to your jump list by pressing P (shift + p)\nwhile you are browsing that folder in FileBrowser"
+            content += (
+                "Jump list is empty!\n\n"
+                "Add a folder to your jump list by pressing P (shift + p)\n"
+                "while you are browsing that folder in FileBrowser"
+            )
 
         for p in self.jump_points:
             content += f'★ {self.display_name(p[0])}→{self.display_path(p[1])}\n'

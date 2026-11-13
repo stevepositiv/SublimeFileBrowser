@@ -2,10 +2,9 @@ import os
 import tempfile
 
 import sublime
-from unittesting import DeferrableViewTestCase
-
 from FileBrowser.lib.common import PARENT_SYM, SYNTAX_PATH
 from FileBrowser.lib.show import retarget_dired_view
+from unittesting import DeferrableViewTestCase
 
 
 class HeaderNavigationTest(DeferrableViewTestCase):
