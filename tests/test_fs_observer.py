@@ -6,9 +6,8 @@ import threading
 from types import SimpleNamespace
 from unittest import TestCase, mock, skipIf
 
-from unittesting import DeferrableTestCase
-
 from FileBrowser.lib.common import emit_event
+from unittesting import DeferrableTestCase
 
 fs_observer = importlib.import_module('FileBrowser.dired_fs_observer')
 
