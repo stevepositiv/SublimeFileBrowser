@@ -1,3 +1,6 @@
 *.pyc
 *.cache
 *.branch
+.ruff_cache
+__pycache__
+*.sublime-workspace
