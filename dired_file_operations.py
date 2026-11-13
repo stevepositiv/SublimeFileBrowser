@@ -63,7 +63,7 @@ class dired_create(TextCommand, DiredBaseCommand):
 
         fqn = join(self.path, value)
         if exists(fqn):
-            sublime.error_message('{0} already exists'.format(fqn))
+            sublime.error_message(f'{fqn} already exists')
             return False
 
         if self.which == 'directory':
@@ -120,9 +120,9 @@ class dired_delete(TextCommand, DiredBaseCommand):
             return sublime.status_message('Nothing selected')
 
         if len(files) == 1:
-            msg = "Delete {0}?".format(files[0])
+            msg = f"Delete {files[0]}?"
         else:
-            msg = "Delete {0} items?".format(len(files))
+            msg = f"Delete {len(files)} items?"
 
         view.settings().get('dired_confirm_delete', True)
         if (
@@ -256,7 +256,7 @@ class dired_rename_commit(TextCommand, DiredBaseCommand):
         self.view.window().run_command("show_panel", {"panel": "console"})
         print(
             *(
-                '\n   Original name: {0}\nConflicting name: {1}'.format(b, a)
+                f'\n   Original name: {b}\nConflicting name: {a}'
                 for (b, a) in zip(before, after) if b != a and a in before
             ),
             sep='\n',
@@ -285,12 +285,12 @@ class dired_rename_commit(TextCommand, DiredBaseCommand):
             if a in existing:
                 # There is already a file with this name.  Give it a temporary name (in
                 # case of cycles like "x->z and z->x") and put it back on the list.
-                tmp = tempfile.NamedTemporaryFile(delete=False, dir=path).name
+                tmp = tempfile.NamedTemporaryFile(delete=False, dir=path).name  # noqa: SIM115
                 os.unlink(tmp)
                 diffs.append((tmp, a))
                 a = tmp
 
-            print('FileBrowser rename: {0} → {1}'.format(b, a))
+            print(f'FileBrowser rename: {b} → {a}')
             orig = join(path, b)
             if orig[-1] == '/' and os.path.islink(orig[:-1]):
                 # last slash shall be omitted; file has no last slash,
@@ -305,11 +305,11 @@ class dired_rename_commit(TextCommand, DiredBaseCommand):
                     msg = (
                         'FileBrowser:\n\nError is occurred during renaming.\n'
                         'Please, fix it and apply changes or cancel renaming.\n\n'
-                        '\t {0} → {1}\n\n'
+                        f'\t {b} → {a}\n\n'
                         'Don’t rename\n'
                         '  • non-existed file (cancel renaming to refresh)\n'
                         '  • file if you’re not owner'
-                        '  • disk letter on Windows\n'.format(b, a)
+                        '  • disk letter on Windows\n'
                     )
                     sublime.error_message(msg)
                     return
@@ -389,7 +389,7 @@ class dired_copy_files(TextCommand, DiredBaseCommand):
         if not used_marked:
             try:
                 self.view.run_command('dired_next_line', {"forward": True})
-            except Exception:
+            except Exception:  # noqa: BLE001, S110
                 pass
 
         # Update status bar to reflect current clipboard and mark counts
@@ -453,14 +453,20 @@ class dired_paste_files_to(TextCommand, DiredBaseCommand):
             or self.get_selected(parent=False, full=True)
         )
 
-        mitems = len(sources_move)
-        citems = len(sources_copy)
-        if not (mitems or citems):
+        move_count = len(sources_move)
+        copy_count = len(sources_copy)
+
+        if not (move_count or copy_count):
             return sublime.status_message('Nothing to paste')
 
-        both = mitems and citems
-        msg = '%s%s to:' % (('Move %d' % mitems) if mitems else '',
-                            ('%sopy %d' % (' and c' if both else 'C', citems)) if citems else '')
+        msg = []
+        if move_count:
+            msg.append(f'Move {move_count}')
+        if copy_count:
+            msg.append(f'{"and copy" if move_count else "Copy"} {copy_count}')
+        msg.append('to:')
+        msg = ' '.join(msg)
+
         path = self.get_path()
         window = self.view.window() or sublime.active_window()
         emit_event('ignore_view', self.view.id())
@@ -530,7 +536,7 @@ def _dups(sources_copy, destination):
     ]
 
 
-class call_SHFileOperationW(object):
+class call_SHFileOperationW:
     '''call Windows API for file operations'''
     def __init__(
         self,
@@ -581,7 +587,7 @@ class call_SHFileOperationW(object):
         SHFileOperationW = ctypes.windll.shell32.SHFileOperationW
         SHFileOperationW.argtypes = [ctypes.POINTER(SHFILEOPSTRUCTW)]
         pFrom = '\x00'.join(sources) + '\x00'
-        pTo   = ('%s\x00' % destination) if destination else None
+        pTo   = (f'{destination}\x00') if destination else None
         wf = ctypes.WINFUNCTYPE(wintypes.HWND)
         get_hwnd = wf(ctypes.windll.user32.GetForegroundWindow)
         args  = SHFILEOPSTRUCTW(
@@ -620,7 +626,7 @@ class call_SHFileOperationW(object):
             sublime.set_timeout(lambda: self.view.run_command('dired_refresh'), 1)
 
 
-class call_SystemAgnosticFileOperation(object):
+class call_SystemAgnosticFileOperation:
     '''file operations using Python standard library'''
     def __init__(self, view, sources_move, sources_copy, destination):
         self.view    = view
@@ -649,7 +655,7 @@ class call_SystemAgnosticFileOperation(object):
         msg = (
             'FileBrowser:\n\n'
             'Some files exist already, Cancel to skip all, OK to overwrite or rename.\n\n'
-            '\t{0}'.format('\n\t'.join(self.errors.keys()))
+            '\t{}'.format('\n\t'.join(self.errors.keys()))
         )
         self.actions = [['Overwrite', 'Folder cannot be overwritten'],
                         ['Duplicate', 'Item will be renamed automatically']]
@@ -665,13 +671,12 @@ class call_SystemAgnosticFileOperation(object):
     def show_quick_panel(self):
         '''dialog asks if user would like to duplicate, overwrite, or skip item'''
         t, f    = self.errors.popitem()
-        options = self.actions + [['from %s' % f, 'Skip'], ['to   %s' % t, 'Skip']]
+        options = self.actions + [[f'from {f}', 'Skip'], [f'to   {t}', 'Skip']]
         done    = lambda i: self.user_input(i, f, t)
         sublime.set_timeout(
             lambda: self.window.show_quick_panel(options, done, sublime.MONOSPACE_FONT),
             10
         )
-        return
 
     def user_input(self, i, name, new_name):
         if i == 0:
@@ -740,11 +745,11 @@ class call_SystemAgnosticFileOperation(object):
             m = e.args[0]
             if isinstance(m, list):
                 sublime.error_message(
-                    'FileBrowser:\n\n{0}'.format('\n'.join([i[-1] for i in m]))
+                    'FileBrowser:\n\n{}'.format('\n'.join([i[-1] for i in m]))
                 )
             else:
                 sublime.error_message(f'FileBrowser:\n\n{e}')
-        except Exception as e:  # just in case
+        except Exception as e:  # just in case  # noqa: BLE001
             sublime.error_message(f'FileBrowser:\n\n{e}')
         else:
             if mode == 'move':
@@ -761,7 +766,7 @@ class call_SystemAgnosticFileOperation(object):
             i += dir
             self.view.set_status(
                 '__FileBrowser__',
-                'Please wait{0}…{1}Writing {2}'.format(
+                'Please wait{0}…{1}Writing {2}'.format(  # noqa: UP030
                     ' ' * before,
                     ' ' * after,
                     ', '.join([t.name for t in threads])
@@ -782,14 +787,14 @@ class call_SystemAgnosticFileOperation(object):
         separator = self.view.settings().get('dired_dup_separator', ' — ')
         for i in itertools.count(2):
             if no_extension:
-                cfp = "{1}{2}{0}".format(i, old_name, separator)
+                cfp = f"{old_name}{separator}{i}"
             else:
                 # leading space may cause problems, e.g.
                 # good: 'name — 2.ext'
                 # good: '— 2.ext'
                 # bad:  ' — 2.ext'
                 fn, ext  = '.'.join(split_name[:-1]), split_name[-1]
-                nn = '{0}{1}{2}.{3}'.format(fn, separator, i, ext)
+                nn = f'{fn}{separator}{i}.{ext}'
                 cfp = join(path, nn.lstrip())
             if not os.path.exists(cfp):
                 break

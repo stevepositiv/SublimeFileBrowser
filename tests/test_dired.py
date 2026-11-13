@@ -3,10 +3,9 @@ import tempfile
 import unittest
 
 import sublime
-from unittesting import DeferrableTestCase
-
-from FileBrowser.lib.common import DIRED_SETTINGS, prune_missing_cut_items
 from FileBrowser.dired import existing_directories
+from FileBrowser.lib.common import DIRED_SETTINGS, prune_missing_cut_items
+from unittesting import DeferrableTestCase
 
 
 class PruneMissingCutItemsTest(DeferrableTestCase):

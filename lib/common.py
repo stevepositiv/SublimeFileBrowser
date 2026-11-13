@@ -63,7 +63,7 @@ class ListingItem(NamedTuple):
     note: str
 
 if NT:
-    import ctypes
+    pass
 
 
 MARK_OPTIONS = sublime.DRAW_NO_OUTLINE

@@ -1,7 +1,6 @@
 import unittest
 
 import sublime
-
 from FileBrowser.lib.common import ROOT
 
 
