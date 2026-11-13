@@ -3,11 +3,9 @@ from __future__ import annotations
 
 import os
 import stat
-import sys
 from collections import defaultdict
 from datetime import datetime
 from os.path import basename, dirname, exists, isdir, join
-from textwrap import dedent
 
 import sublime
 from sublime import Region
@@ -51,16 +49,6 @@ def plugin_loaded():
         for v in w.views():
             if v.settings() and v.settings().get("dired_path"):
                 v.run_command("dired_refresh")
-
-    dfsobserver = 'FileBrowser.0_dired_fs_observer'
-    if dfsobserver not in sys.modules or sys.modules[dfsobserver].Observer is None:
-        print(dedent('''
-            FileBrowser: watchdog module is not importable, hence auto-refresh will not work.
-            You can still manually refresh a dired view with `[r]`.
-             • If you installed via Package Control, make sure to restart Sublime Text often enough
-               to give it a chance to install the required dependencies.
-             • If you installed manually, then refer the Readme on how to install dependencies as well.
-        '''))
 
     settings = sublime.load_settings(DIRED_SETTINGS)
     settings.add_on_change(

@@ -9,7 +9,7 @@ from unittesting import DeferrableTestCase
 
 from FileBrowser.lib.common import emit_event
 
-fs_observer = importlib.import_module('FileBrowser.0_dired_fs_observer')
+fs_observer = importlib.import_module('FileBrowser.dired_fs_observer')
 
 if fs_observer.Observer:
     from watchdog.events import FileCreatedEvent, FileModifiedEvent

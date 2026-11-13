@@ -3,17 +3,11 @@
     2. waiting for any changes in these paths (create/remove/modify file), and in case of such change
     3. schedule a refresh for corresponding view(s)
 
-Filename of this module starts with 0_ because we want it being loaded before other FileBrowser
-modules, so we can check if auto-refresh is functional.
-The reason why we cannot check functionality here, but have to in the other module, is because
-dired.py module is refreshing existing views on start-up, thus before checking presence of
-auto-refresh, we must be sure that Refresh command is functional (i.e. dired.py is loaded).
-In the other words, the algorithm is after we sure that
-    1) all views are loaded (see dired.plugin_loaded),
-    2) auto-refresh is presented,
-then, finally,
-    3) we add callback on change of dired_autorefresh setting (so user can disable it globally).
-That is why this module must be loaded first, but its presence is checked in the other module.
+Views register their paths via common.emit_event, which looks this module up in sys.modules on
+each call, so it always reaches the current observer, also after this module was reloaded.
+On load, the observer picks up the paths of all open views itself, so the load order of the
+plugin modules doesn't matter: events emitted before the observer exists are lost, but the
+pickup covers them.  That also restores the watches when this module gets reloaded.
 '''
 
 from __future__ import annotations
@@ -58,8 +52,31 @@ observer = None
 
 def plugin_loaded():
     global observer
-    if Observer:
-        observer = ObservePaths()
+    if not Observer:
+        print(dedent('''
+            FileBrowser: watchdog module is not importable, hence auto-refresh will not work.
+            You can still manually refresh a dired view with `[r]`.
+             • If you installed via Package Control, make sure to restart Sublime Text often enough
+               to give it a chance to install the required dependencies.
+             • If you installed manually, then refer the Readme on how to install dependencies as well.
+        '''))
+        return
+    observer = ObservePaths()
+    watch_open_views(observer)
+
+
+def watch_open_views(observer: ObservePaths):
+    '''Register the paths of all open views, as their `dired_refresh` would'''
+    for w in sublime.windows():
+        for v in w.views():
+            s = v.settings()
+            path = s.get('dired_path')
+            if not path or not s.get('dired_autorefresh', True):
+                continue
+            if path == 'ThisPC\\':
+                path = ''
+            expanded = s.get('dired_expanded_paths') or []
+            observer.post('set_paths', (v.id(), expanded + ([path] if path else [])))
 
 
 def plugin_unloaded():
