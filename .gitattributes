@@ -8,8 +8,9 @@
 *.gitattributes     export-ignore
 
 # development
-/tests/             export-ignore
-/__init__.py        export-ignore
-mypy.ini            export-ignore
-setup.cfg           export-ignore
-unittesting.json    export-ignore
+/tests/                 export-ignore
+/__init__.py            export-ignore
+dired.sublime-project   export-ignore
+pyproject.toml          export-ignore
+setup.cfg               export-ignore
+unittesting.json        export-ignore
