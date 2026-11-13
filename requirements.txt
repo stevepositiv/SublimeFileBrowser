@@ -1,6 +1,0 @@
-FileBrowser==1.2.0
-sublime==0.1.0
-typing_extensions==4.16.0
-watchdog==7.1.0
-
-sublime-text-stubs = "==4213.*"
