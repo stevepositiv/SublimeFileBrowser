@@ -899,7 +899,23 @@ def _do_scandir(
                     or not show_system and attrs & FILE_ATTRIBUTE_SYSTEM:
                         continue
 
-            is_directory = entry.is_dir(follow_symlinks=False)
+            # BUGFIX
+            #
+            # Description
+            # `_do_scandir` checked `entry.is_dir(follow_symlinks=False)`, so symlinks
+            # to folders were listed as files and could not be expanded, while
+            # junctions (which Python doesn't treat as symlinks) showed up as folders.
+            #
+            # Implementation Notes
+            # Follow links so symlinked folders are listed (and expandable) as folders,
+            # just like junctions. Broken links have no target and stay plain entries.
+            # Recursion stays bounded: only explicitly expanded paths and at
+            # most `auto_expand` (three) levels in fuzzy search are walked.
+
+            try:
+                is_directory = entry.is_dir()
+            except OSError:
+                is_directory = False
             if is_directory and name in dir_patterns:
                 continue
 
