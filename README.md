@@ -442,13 +442,32 @@ Files queued in the internal clipboard are highlighted as well:
 - Copied items use the `dired.copied` scope.
 - Cut items use the `dired.cut` scope.
 
-On Windows, items carrying the filesystem "hidden" and "system" attribute are
-highlighted using `dired.fileattr.hidden` and `dired.fileattr.system` respectively.
-Files carrying both attributes ("superhidden") also get both scopes.
-Files that are "system" but not "hidden" use `dired.fileattr.system.only`
-instead, which falls back to any `dired.fileattr.system` rule if you don't
-define one for it.
-These scopes rely on the stats column, so `dired_show_stats` needs to be enabled.
+Items also carry scopes for their flags, independent of `dired_show_stats`:
+- `dired.fileattr.hidden` and `dired.fileattr.system`: the Windows "hidden"
+  and "system" attributes. Items with both ("superhidden") get both scopes.
+- `dired.excluded`: items matching `dired_hidden_files_patterns` or
+  `folder_exclude_patterns`, visible while hidden files are shown.
+- `dired.link`: symlinks (all platforms) and junctions (Windows). Hard links
+  are not marked.
+
+These scopes cover the whole item line and come *before* the name scopes, so
+a rule needs to name the part it colors to win over broad rules like
+`string`. Combinations are plain selectors:
+
+```jsonc
+// hidden names
+{ "scope": "dired.fileattr.hidden string.name.file.dired, dired.fileattr.hidden string.name.directory.dired", ... },
+// "system" but not "hidden"
+{ "scope": "dired.fileattr.system string.name.file.dired - dired.fileattr.hidden", ... },
+```
+
+`dired.hidden-color-scheme` in this package has complete examples for
+Mariana.
+
+Item lines contain invisible characters that encode these flags and the
+column layout. They are only invisible because dired views set
+`"draw_unicode_white_space": "none"`; don't override that setting for dired
+views.
 
 You can customize these colors in your active color scheme by adding rules
 for the scopes above (e.g., set a soft rosa background for `dired.copied`,

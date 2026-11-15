@@ -17,7 +17,8 @@ from sublime_plugin import TextCommand
 
 from .common import (
     DiredBaseCommand, relative_path, emit_event,
-    NT, PARENT_SYM, MARK_OPTIONS)
+    NT, PARENT_SYM, MARK_OPTIONS, RX_EXPANDED_DIR,
+    LineStructureError, name_field, split_line)
 from . import prompt
 from .busy_spinner import busy_indicator
 
@@ -196,7 +197,10 @@ class dired_rename_commit(TextCommand, DiredBaseCommand):
         before = self.view.settings().get('rename')
         # We marked the set of files with a region.  Make sure the region still has the same
         # number of files.
-        after  = self.get_after()
+        try:
+            after = self.get_after()
+        except LineStructureError as error:
+            return sublime.error_message(str(error))
 
         if len(after) != len(before):
             return sublime.error_message('You cannot add or remove lines')
@@ -230,12 +234,20 @@ class dired_rename_commit(TextCommand, DiredBaseCommand):
             parent = dirname(self.get_fullpath_for(line).rstrip(os.sep))
         else:
             parent = dirname(self.get_parent(line, path).rstrip(os.sep))
-        new_name = self.view.substr(Region(self._get_name_point(line), line.b))
-        if os.sep in new_name:  # ignore trailing errors, e.g. <empty>
+        parts = split_line(self.view.substr(line))
+        if parts is None:
+            row = self.view.rowcol(line.a)[0] + 1
+            raise LineStructureError(
+                "FileBrowser:\n\n"
+                "Line {0} no longer has the expected layout, so its new name "
+                "can't be read safely.\n\n"
+                "Text was probably typed outside the name, or the name contains "
+                "an invisible separator character.\n\n"
+                "Fix it, or cancel renaming.".format(row)
+            )
+        new_name = name_field(parts[0])
+        if os.sep in new_name:  # directories keep exactly one trailing separator
             new_name = new_name.split(os.sep)[0] + os.sep
-        SEPARATOR = '\u200b'
-        if SEPARATOR in new_name:
-            new_name = new_name.split(SEPARATOR)[0].rstrip()
         return join(parent, new_name)
 
     def report_conflicts(self, before, after):
@@ -313,7 +325,7 @@ class dired_rename_commit(TextCommand, DiredBaseCommand):
 
     def re_expand_new_names(self):
         '''Make sure that expanded directories will keep state if were renamed'''
-        expanded = [self.view.line(r) for r in self.view.find_all(r'^\s*▾')]
+        expanded = [self.view.line(r) for r in self.view.find_all(RX_EXPANDED_DIR)]
         return [self._new_name(line, full=True) for line in expanded]
 
 
@@ -427,8 +439,8 @@ class dired_paste_files(TextCommand, DiredBaseCommand):
 
 def is_directory_expanded(view):
     line_region = view.line(view.sel()[0].a)
-    line_content = view.substr(line_region)
-    return '▾' in line_content
+    parts = split_line(view.substr(line_region))
+    return bool(parts) and parts[0][2].strip() == '▾'
 
 
 class dired_paste_files_to(TextCommand, DiredBaseCommand):

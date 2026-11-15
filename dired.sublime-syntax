@@ -5,89 +5,44 @@ hidden: true
 file_extensions:
   - dired
 scope: text.dired
+
+# Item lines carry invisible structure characters (see common.py and
+# PLAN-Invisible-Flags.md):
+#
+#   [indent][SEG][flags][SEG][icon][SEG][name][SEG][note][COL][size][COL][mtime][COL][attrs]
+#
+# The flags field is read bit by bit.  Every set bit leaves a context with a
+# `meta_content_scope` on the stack, so everything after the flags (icon,
+# name, note, stats) is inside its scope.  Combinations ("system but not
+# hidden", ...) are never spelled out here; color schemes express them with
+# selectors such as `dired.fileattr.system - dired.fileattr.hidden`.
+#
+# Note on scope order: the flag scopes end up BEFORE `string.name.*` in the
+# scope stack.  Sublime resolves each style property by the most specific
+# matching selector, so a broad base-theme rule like `string` would beat a
+# plain `dired.fileattr.hidden` rule.  Color scheme rules therefore use
+# descendant selectors, e.g. `dired.fileattr.hidden string.name.file.dired`.
+#
+# All contexts pop on `(?=\n)` one after another, because the stack depth
+# depends on how many bits are set.
+
+variables:
+  seg: '\x{200B}'
+  col: '\x{2063}'
+  on: '\x{200D}'
+  off: '\x{200C}'
+  bit: '[\x{200C}\x{200D}]'
+  # one character of a field (anything but separators and newline)
+  ch: '[^\x{200B}\x{2063}\n]'
+  # from line start up to and including the SEG before the icon
+  to_icon: '\t*{{seg}}{{bit}}*{{seg}}'
+
 contexts:
   main:
-    # The three variants below recolor the item name when the stats column
-    # (only present when `dired_show_stats` is on) carries the Windows
-    # hidden/system attribute flags ("H"/"S", or "-" when unset). They are
-    # the last column, so the lookahead finds them by a leading space and
-    # end-of-line, rather than by position. Most specific (both flags)
-    # first, since the generic fallback further down would otherwise win.
-    #
-    # The fileattr scope is appended AFTER the base name scope (not before):
-    # Sublime resolves each style property (foreground, background, ...) by
-    # picking the innermost/rightmost matching scope atom in the stack, so a
-    # fileattr atom placed first would lose foreground/background to any
-    # broad base-theme rule matching e.g. "string" (fontStyle isn't usually
-    # contested the same way, which is why it alone seemed to "work").
-    - match: '^(?=.*\x{200B}.* HS$)(\s*)([▸▾] )([^\/]*?)([/\\])?\s*(<.*>)?(\s*\x{200B}(.*))?$'
-      scope: dired.item.directory
-      captures:
-        1: indent
-        2: punctuation.definition.directory.symbol.dired
-        3: string.name.directory.dired dired.fileattr.hidden dired.fileattr.system
-        4: punctuation.definition.directory.slash.dired dired.fileattr.hidden dired.fileattr.system
-        5: string.error.dired
-        6: string.name.directory.stats.dired
-    - match: '^(?=.*\x{200B}.* H-$)(\s*)([▸▾] )([^\/]*?)([/\\])?\s*(<.*>)?(\s*\x{200B}(.*))?$'
-      scope: dired.item.directory
-      captures:
-        1: indent
-        2: punctuation.definition.directory.symbol.dired
-        3: string.name.directory.dired dired.fileattr.hidden
-        4: punctuation.definition.directory.slash.dired dired.fileattr.hidden
-        5: string.error.dired
-        6: string.name.directory.stats.dired
-    - match: '^(?=.*\x{200B}.* -S$)(\s*)([▸▾] )([^\/]*?)([/\\])?\s*(<.*>)?(\s*\x{200B}(.*))?$'
-      scope: dired.item.directory
-      captures:
-        1: indent
-        2: punctuation.definition.directory.symbol.dired
-        3: string.name.directory.dired dired.fileattr.system.only
-        4: punctuation.definition.directory.slash.dired dired.fileattr.system.only
-        5: string.error.dired
-        6: string.name.directory.stats.dired
-    - match: '^(\s*)([▸▾] )([^\/]*?)([/\\])?\s*(<.*>)?(\s*\x{200B}(.*))?$'
-      scope: dired.item.directory
-      captures:
-        1: indent
-        2: punctuation.definition.directory.symbol.dired
-        3: string.name.directory.dired
-        4: punctuation.definition.directory.slash.dired
-        5: string.error.dired
-        6: string.name.directory.stats.dired
-    - match: '^(?=.*\x{200B}.* HS$)(\s*)(≡ )(.*?(\.[^\.\n]+?)?)(\s*\x{200B}(.*))?$'
-      scope: dired.item.file
-      captures:
-        1: indent
-        2: punctuation.definition.file.symbol.dired
-        3: string.name.file.dired dired.fileattr.hidden dired.fileattr.system
-        4: string.name.file.extension.dired dired.fileattr.hidden dired.fileattr.system
-        5: string.name.file.stats.dired
-    - match: '^(?=.*\x{200B}.* H-$)(\s*)(≡ )(.*?(\.[^\.\n]+?)?)(\s*\x{200B}(.*))?$'
-      scope: dired.item.file
-      captures:
-        1: indent
-        2: punctuation.definition.file.symbol.dired
-        3: string.name.file.dired dired.fileattr.hidden
-        4: string.name.file.extension.dired dired.fileattr.hidden
-        5: string.name.file.stats.dired
-    - match: '^(?=.*\x{200B}.* -S$)(\s*)(≡ )(.*?(\.[^\.\n]+?)?)(\s*\x{200B}(.*))?$'
-      scope: dired.item.file
-      captures:
-        1: indent
-        2: punctuation.definition.file.symbol.dired
-        3: string.name.file.dired dired.fileattr.system.only
-        4: string.name.file.extension.dired dired.fileattr.system.only
-        5: string.name.file.stats.dired
-    - match: '^(\s*)(≡ )(.*?(\.[^\.\n]+?)?)(\s*\x{200B}(.*))?$'
-      scope: dired.item.file
-      captures:
-        1: indent
-        2: punctuation.definition.file.symbol.dired
-        3: string.name.file.dired
-        4: string.name.file.extension.dired
-        5: string.name.file.stats.dired
+    - match: '^(?={{to_icon}}[▸▾] {{seg}})'
+      push: [directory-item, item-start]
+    - match: '^(?={{to_icon}}≡ {{seg}})'
+      push: [file-item, item-start]
     - match: '^⠤(\s*\[.+\]){0,1}$'
       scope: dired.item.parent_dir
       captures:
@@ -104,3 +59,125 @@ contexts:
             2: punctuation.definition.rename_mode.dired
             3: punctuation.definition.separator.dired
           pop: true
+
+  # --- line scopes (kept for Python code that checks them at line start) -----
+
+  directory-item:
+    - meta_content_scope: dired.item.directory
+    - include: pop-at-eol
+
+  file-item:
+    - meta_content_scope: dired.item.file
+    - include: pop-at-eol
+
+  item-start:
+    - match: '^(\t*)({{seg}})'
+      captures:
+        1: indent
+      set: flag-hidden
+
+  # --- flags field, one reader and one scope context per bit -----------------
+
+  flag-hidden:  # bit 0
+    - match: '{{on}}'
+      set: [scope-hidden, flag-system]
+    - match: '{{off}}'
+      set: flag-system
+    - include: not-a-bit
+
+  flag-system:  # bit 1
+    - match: '{{on}}'
+      set: [scope-system, flag-excluded]
+    - match: '{{off}}'
+      set: flag-excluded
+    - include: not-a-bit
+
+  flag-excluded:  # bit 2
+    - match: '{{on}}'
+      set: [scope-excluded, flag-link]
+    - match: '{{off}}'
+      set: flag-link
+    - include: not-a-bit
+
+  flag-link:  # bit 3
+    - match: '{{on}}'
+      set: [scope-link, flag-executable]
+    - match: '{{off}}'
+      set: flag-executable
+    - include: not-a-bit
+
+  flag-executable:  # bit 4 (placeholder, not computed yet)
+    - match: '{{on}}'
+      set: [scope-executable, flag-type-0]
+    - match: '{{off}}'
+      set: flag-type-0
+    - include: not-a-bit
+
+  flag-type-0:  # bits 5-6: item type, placeholders; only consumed
+    - match: '{{bit}}'
+      set: flag-type-1
+    - include: not-a-bit
+
+  flag-type-1:
+    - match: '{{bit}}'
+      set: fields
+    - include: not-a-bit
+
+  not-a-bit:
+    # malformed flags field: continue with the fields instead of getting stuck
+    - match: '(?!{{bit}})'
+      set: fields
+
+  scope-hidden:
+    - meta_content_scope: dired.fileattr.hidden
+    - include: pop-at-eol
+
+  scope-system:
+    - meta_content_scope: dired.fileattr.system
+    - include: pop-at-eol
+
+  scope-excluded:
+    - meta_content_scope: dired.excluded
+    - include: pop-at-eol
+
+  scope-link:
+    - meta_content_scope: dired.link
+    - include: pop-at-eol
+
+  scope-executable:
+    - meta_content_scope: dired.executable
+    - include: pop-at-eol
+
+  # --- fields after the flags --------------------------------------------------
+
+  fields:
+    - match: '({{seg}})([▸▾] )({{seg}})({{ch}}*?)([/\\])?(\t?)({{seg}})(<{{ch}}*>)?'
+      captures:
+        2: punctuation.definition.directory.symbol.dired
+        4: string.name.directory.dired
+        5: punctuation.definition.directory.slash.dired
+        8: string.error.dired
+      set: stats-directory
+    - match: '({{seg}})(≡ )({{seg}})({{ch}}*?(\.[^.\x{200B}\x{2063}\n]+?)?)({{seg}})'
+      captures:
+        2: punctuation.definition.file.symbol.dired
+        4: string.name.file.dired
+        5: string.name.file.extension.dired
+      set: stats-file
+    - include: pop-at-eol
+
+  stats-directory:
+    - match: '({{col}})([^\x{2063}\n]*)'
+      captures:
+        2: string.name.directory.stats.dired
+    - include: pop-at-eol
+
+  stats-file:
+    - match: '({{col}})([^\x{2063}\n]*)'
+      captures:
+        2: string.name.file.stats.dired
+    - include: pop-at-eol
+
+  pop-at-eol:
+    - match: '(?=\n)'
+      pop: true

@@ -22,6 +22,76 @@ LIN = PLATFORM == 'linux'
 OSX = PLATFORM == 'osx'
 FILE_ATTRIBUTE_HIDDEN = 0x2
 FILE_ATTRIBUTE_SYSTEM = 0x4
+IO_REPARSE_TAG_SYMLINK = 0xA000000C
+IO_REPARSE_TAG_MOUNT_POINT = 0xA0000003  # junctions and volume mount points
+
+
+# --- Line layout ---------------------------------------------------------------
+# Item lines encode flags and structure with zero-width characters
+# (see PLAN-Invisible-Flags.md):
+#
+#   [indent][SEG][flags][SEG][icon][SEG][name][SEG][note][COL][size][COL][mtime][COL][attrs]
+#
+# COL starts an aligned column, SEG separates the parts of the name column.
+# Padding goes before a separator and belongs to the preceding field.
+# The characters are built with chr() so that no invisible character is ever
+# written literally into the source.  They only render invisibly because
+# dired views set "draw_unicode_white_space": "none".
+BIT_ON = chr(0x200D)       # ZERO WIDTH JOINER
+BIT_OFF = chr(0x200C)      # ZERO WIDTH NON-JOINER
+COLUMN_SEP = chr(0x2063)   # INVISIBLE SEPARATOR
+SEGMENT_SEP = chr(0x200B)  # ZERO WIDTH SPACE
+_STRIP_STRUCTURE = dict.fromkeys(map(ord, BIT_ON + BIT_OFF + COLUMN_SEP + SEGMENT_SEP))
+
+# Flag bits in field order.  Positions are only ever appended, never reordered.
+FLAG_HIDDEN = 1 << 0
+FLAG_SYSTEM = 1 << 1
+FLAG_EXCLUDED = 1 << 2    # matches dired_hidden_files_patterns / folder_exclude_patterns
+FLAG_LINK = 1 << 3        # symlink, junction or mount point (not hard links)
+FLAG_EXECUTABLE = 1 << 4  # placeholder, not computed yet
+# bits 5-6: item type, placeholders until it is implemented
+FLAG_WIDTH = 7
+NAME_FIELDS = 5  # indent, flags, icon, name, note
+
+# Sublime regex: an item line up to and including the SEG before the icon
+RX_ITEM_PREFIX = r'^\t*\x{200B}[\x{200C}\x{200D}]*\x{200B}'
+RX_EXPANDED_DIR = RX_ITEM_PREFIX + '▾'
+
+
+class LineStructureError(ValueError):
+    '''An item line doesn't have the expected layout.'''
+
+
+def encode_flags(flags: int) -> str:
+    return ''.join(BIT_ON if flags >> i & 1 else BIT_OFF for i in range(FLAG_WIDTH))
+
+
+def decode_flags(field: str) -> int:
+    return sum(1 << i for i, ch in enumerate(field) if ch == BIT_ON)
+
+
+def split_line(text: str) -> tuple[list[str], list[str]] | None:
+    '''Split an item line into its name fields [indent, flags, icon, name, note]
+    and its stats fields.  Fields are not stripped.
+
+    Returns None for non-item lines (header, parent) and for item lines that
+    don't match the layout, e.g. because a name contains a separator.'''
+    name_col, *stats = text.split(COLUMN_SEP)
+    fields = name_col.split(SEGMENT_SEP)
+    if len(fields) != NAME_FIELDS:
+        return None
+    return fields, stats
+
+
+def name_field(fields: list[str]) -> str:
+    '''The name from split_line()'s name fields, without the padding before a note.'''
+    return fields[3].rstrip('\t')
+
+
+def visible_len(text: str, tab_size: int) -> int:
+    '''Display width of text: structure characters are zero-width and, as
+    Sublime does, don't count for tab stops.'''
+    return len(text.translate(_STRIP_STRUCTURE).expandtabs(tab_size))
 
 
 class EntryInfo(NamedTuple):
@@ -30,8 +100,7 @@ class EntryInfo(NamedTuple):
     is_dir: bool
     size: int | None
     mtime: float | None
-    hidden: bool
-    system: bool
+    flags: int
 
 
 class ListingItem(NamedTuple):
@@ -40,8 +109,7 @@ class ListingItem(NamedTuple):
     is_dir: bool
     size: int | None
     mtime: float | str | None
-    hidden: bool
-    system: bool
+    flags: int
     depth: int
     expanded: bool
     note: str
@@ -149,7 +217,7 @@ def dynamic_width(view, lo=0.25, hi=0.5):
         # Use the last line as a proxy for the widest tabular row.
         last_region = view.line(view.size())
         line_text = view.substr(last_region).rstrip('\n')
-        line_len = len(line_text)
+        line_len = visible_len(line_text, s.get('tab_size') or 4)
         # Cut the date away
         chars = line_len - 14
     else:
@@ -243,7 +311,7 @@ class DiredBaseCommand:
         if extreme == "bof":
             ext_region = Region(files.a, files.a)
         else:
-            name_point = self.view.extract_scope(self.view.line(files.b).a + 2).a
+            name_point = self._get_name_point(self.view.line(files.b))
             ext_region = Region(name_point, name_point)
         self.view.sel().add(ext_region)
         self.view.show_at_center(ext_region)
@@ -290,13 +358,22 @@ class DiredBaseCommand:
         return self.view.line(pt)
 
     def _get_name_point(self, line):
-        '''Return point at which filename starts (i.e. after icon & whitespace)'''
-        scope = self.view.scope_name(line.a)
-        if 'indent' in scope:
-            name_point = self.view.extract_scope(line.a).b
-        else:
-            name_point = line.a
-        return name_point + (2 if 'parent_dir' not in scope else 0)
+        '''Return point at which the name starts, i.e. after the third SEG
+        (indent, flags and icon).  For other lines (parent, header) line.a.'''
+        return self._point_after_segment(line, 3)
+
+    def _get_icon_point(self, line):
+        '''Return point at which the icon starts, i.e. after the second SEG.'''
+        return self._point_after_segment(line, 2)
+
+    def _point_after_segment(self, line, nth):
+        text = self.view.substr(line)
+        idx = -1
+        for _ in range(nth):
+            idx = text.find(SEGMENT_SEP, idx + 1)
+            if idx < 0:
+                return line.a
+        return line.a + idx + 1
 
     def show_parent(self):
         return self.view.settings().get('dired_show_parent', False)
@@ -562,17 +639,18 @@ class DiredBaseCommand:
         """Return EntryInfo objects for the given directory, respecting hidden settings."""
         show_hidden = getattr(self, 'show_hidden', self.view.settings().get('dired_show_hidden_files', True))
         show_system = getattr(self, 'show_system', self.view.settings().get('dired_show_system_files', True))
-        exclude_patterns = []
-        if not show_hidden:
-            exclude_patterns = self.view.settings().get('dired_hidden_files_patterns', [])
-            if isinstance(exclude_patterns, str):
-                exclude_patterns = [exclude_patterns]
+        # Hidden-files patterns and excluded folders are always evaluated: they
+        # filter when hidden files are hidden, otherwise they set FLAG_EXCLUDED.
+        exclude_patterns = self.view.settings().get('dired_hidden_files_patterns', [])
+        if isinstance(exclude_patterns, str):
+            exclude_patterns = [exclude_patterns]
+        excluded_dirs = [
+            p for p in self.view.settings().get('folder_exclude_patterns', [])
+            if "/" not in p
+        ]
 
+        # Always filtered (only while searching).
         dir_patterns = []
-        if not show_hidden:
-            for p in self.view.settings().get('folder_exclude_patterns', []):
-                if "/" not in p:
-                    dir_patterns.append(p)
         if in_search:
             for p in self.view.settings().get('binary_file_patterns', []):
                 if p.endswith('/*'):
@@ -580,13 +658,13 @@ class DiredBaseCommand:
 
         if not in_search:
             _do_scandir.cache_clear()
-        return _do_scandir(path, show_hidden, show_system,
-                           tuple(exclude_patterns), tuple(dir_patterns), sortfunc)
+        return _do_scandir(path, show_hidden, show_system, tuple(exclude_patterns),
+                           tuple(excluded_dirs), tuple(dir_patterns), sortfunc)
 
     def recreate_dired_expanded_paths_from_view(self):
         # Update persisted expanded paths based on current view state
         # Collect current expanded directory paths from visible arrows
-        regions = self.view.find_all(r'^\s*▾')
+        regions = self.view.find_all(RX_EXPANDED_DIR)
         if regions:
             self.load_index()
             paths = []
@@ -646,13 +724,13 @@ class DiredBaseCommand:
         '''item is Unicode'''
         fname = re.escape(basename(os.path.abspath(item)) or item.rstrip(os.sep))
         if item[-1] == os.sep:
-            pattern = r'^\s*[▸▾] '
+            pattern = RX_ITEM_PREFIX + r'[▸▾] \x{200B}'
             # The displayed directory separator in the view may be forced via
             # settings (e.g. always show "/" on Windows). Be tolerant when
             # locating an item by matching both slashes.
             sep = r'[/\\]'
         else:
-            pattern = r'^\s*≡ '
+            pattern = RX_ITEM_PREFIX + r'≡ \x{200B}'
             sep = ''
         return self.view.find_all('%s%s%s' % (pattern, fname, sep))
 
@@ -864,18 +942,44 @@ def format_size_short(num_bytes: int) -> str:
     return f'{int(size + 0.5)}{units[unit]}'
 
 
+def _is_link(entry: os.DirEntry, stat_res: os.stat_result | None) -> bool:
+    '''Symlinks on all platforms, junctions and mount points on Windows.
+
+    `is_symlink()` is False for junctions, hence the reparse tag.  The
+    REPARSE_POINT attribute alone isn't enough: OneDrive placeholders, deduped
+    files and app execution aliases are reparse points too.  Hard links are
+    not links in this sense (every name is equal).'''
+    try:
+        if entry.is_symlink():
+            return True
+    except OSError:
+        pass
+    return (
+        NT
+        and stat_res is not None
+        and getattr(stat_res, 'st_reparse_tag', 0)
+        in (IO_REPARSE_TAG_SYMLINK, IO_REPARSE_TAG_MOUNT_POINT)
+    )
+
+
 @lru_cache(maxsize=256)
 def _do_scandir(
     path: str,
     show_hidden: bool,
     show_system: bool,
     exclude_patterns: tuple[str],
+    excluded_dirs: tuple[str],
     dir_patterns: tuple[str],
     sortfunc
 ) -> list[EntryInfo]:
+    '''
+    exclude_patterns  name patterns: hidden unless show_hidden, else FLAG_EXCLUDED
+    excluded_dirs     folder names: hidden unless show_hidden, else FLAG_EXCLUDED
+    dir_patterns      folder names that are always skipped
+    '''
     if not path:
         entries = [
-            EntryInfo(f"{drive}:", f"{drive}:{os.sep}", True, None, None, False, False)
+            EntryInfo(f"{drive}:", f"{drive}:{os.sep}", True, None, None, 0)
             for drive in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
             if isdir(f"{drive}:")
         ]
@@ -891,18 +995,25 @@ def _do_scandir(
             except OSError:
                 stat_res = None
 
+            flags = 0
             if any(fnmatch.fnmatch(name, pattern) for pattern in exclude_patterns):
-                continue
-            hidden = system = False
+                if not show_hidden:
+                    continue
+                flags |= FLAG_EXCLUDED
             if NT and stat_res:
                 try:
                     attrs = stat_res.st_file_attributes
                 except AttributeError:
                     pass
                 else:
-                    hidden = bool(attrs & FILE_ATTRIBUTE_HIDDEN)
-                    system = bool(attrs & FILE_ATTRIBUTE_SYSTEM)
-                    if not show_hidden and hidden or not show_system and system:
+                    if attrs & FILE_ATTRIBUTE_HIDDEN:
+                        flags |= FLAG_HIDDEN
+                    if attrs & FILE_ATTRIBUTE_SYSTEM:
+                        flags |= FLAG_SYSTEM
+                    if (
+                        not show_hidden and flags & FLAG_HIDDEN
+                        or not show_system and flags & FLAG_SYSTEM
+                    ):
                         continue
 
             # BUGFIX
@@ -924,13 +1035,19 @@ def _do_scandir(
                 is_directory = False
             if is_directory and name in dir_patterns:
                 continue
+            if is_directory and name in excluded_dirs:
+                if not show_hidden:
+                    continue
+                flags |= FLAG_EXCLUDED
+            if _is_link(entry, stat_res):
+                flags |= FLAG_LINK
 
             size = stat_res.st_size if stat_res and not is_directory else None
             mtime = stat_res.st_mtime if stat_res else None
             full_path = entry.path
             if is_directory and not full_path.endswith(os.sep):
                 full_path += os.sep
-            items.append(EntryInfo(name, full_path, is_directory, size, mtime, hidden, system))
+            items.append(EntryInfo(name, full_path, is_directory, size, mtime, flags))
 
     items.sort(key=sortfunc)
     return items

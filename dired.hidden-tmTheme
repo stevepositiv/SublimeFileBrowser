@@ -196,11 +196,25 @@
 				<string>#d9dee4</string>
 			</dict>
 		</dict>
+		<!-- ITEM FLAGS: the flag scopes cover the whole line and come before
+		     string.name.* in the scope stack, so rules name the parts they color
+		     as descendants (see dired.sublime-syntax). -->
+		<dict>
+			<key>name</key>
+			<string>Pattern-excluded</string>
+			<key>scope</key>
+			<string>dired.excluded string.name.file.dired, dired.excluded string.name.file.extension.dired, dired.excluded string.name.directory.dired, dired.excluded punctuation.definition.directory.slash.dired</string>
+			<key>settings</key>
+			<dict>
+				<key>foreground</key>
+				<string>#A3ABB6</string>
+			</dict>
+		</dict>
 		<dict>
 			<key>name</key>
 			<string>Hidden</string>
 			<key>scope</key>
-			<string>dired.fileattr.hidden</string>
+			<string>dired.fileattr.hidden string.name.file.dired, dired.fileattr.hidden string.name.file.extension.dired, dired.fileattr.hidden string.name.directory.dired, dired.fileattr.hidden punctuation.definition.directory.slash.dired</string>
 			<key>settings</key>
 			<dict>
 				<key>foreground</key>
@@ -213,13 +227,24 @@
 			<key>name</key>
 			<string>System</string>
 			<key>scope</key>
-			<string>dired.fileattr.system</string>
+			<string>dired.fileattr.system string.name.file.dired, dired.fileattr.system string.name.file.extension.dired, dired.fileattr.system string.name.directory.dired, dired.fileattr.system punctuation.definition.directory.slash.dired</string>
 			<key>settings</key>
 			<dict>
 				<key>foreground</key>
 				<string>#D6774B</string>
 				<key>background</key>
 				<string>#d9dee5</string>
+			</dict>
+		</dict>
+		<dict>
+			<key>name</key>
+			<string>Link</string>
+			<key>scope</key>
+			<string>dired.link string.name.file.dired, dired.link string.name.file.extension.dired, dired.link string.name.directory.dired, dired.link punctuation.definition.directory.slash.dired</string>
+			<key>settings</key>
+			<dict>
+				<key>fontStyle</key>
+				<string>italic</string>
 			</dict>
 		</dict>
 

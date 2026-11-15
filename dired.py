@@ -13,14 +13,14 @@ from sublime_plugin import EventListener, WindowCommand, TextCommand
 from .common import (
     DiredBaseCommand, ListingItem, calc_width, display_path, emit_event, get_group, hijack_window,
     history_replace, set_proper_scheme, NT, PARENT_SYM, rx_fuzzy_match,
-    FILE_ATTRIBUTE_HIDDEN, FILE_ATTRIBUTE_SYSTEM)
+    COLUMN_SEP, SEGMENT_SEP, FLAG_HIDDEN, FLAG_SYSTEM,
+    decode_flags, encode_flags, split_line, visible_len)
 from . import prompt
 from .show import show, create_dired_view, retarget_dired_view
 from .jumping import jump_names
 
 
 ICON    = '𝌆'
-SEPARATOR = '\u200b'
 STATS_PADDING = 2
 MIN_NAME_COL_WIDTH = 10
 
@@ -914,7 +914,8 @@ class dired_expand(TextCommand, DiredBaseCommand):
             line = self.view.line(current_sel)
         self.sel = Region(line.a, line.a)
         line_content = self.view.substr(line)
-        if line_content.lstrip().startswith('▾'):
+        parts = split_line(line_content)
+        if parts and parts[0][2].strip() == '▾':
             if toggle:
                 self.view.run_command('dired_fold')
             return
@@ -935,39 +936,27 @@ class dired_expand(TextCommand, DiredBaseCommand):
         indentation_level = self.view.indentation_level(line.a)
 
         entries, err = self.walkdir(path, depth=indentation_level + 1)
-        _base_timestamp = None
-        if SEPARATOR in line_content:
-            stats_part = line_content.split(SEPARATOR, 1)[1].strip()
-            if NT:
-                # Drop the trailing "  HS" attribute flags to normalize cols
-                stats_part = stats_part[:-4]
-
-            # Note: this split used to be by a single space ' ' now two '  '
-            parts = stats_part.split('  ', 1)
-            if len(parts) == 2:
-                _base_timestamp = parts[1].strip()
         drive, tail = os.path.splitdrive(path)
+        # Same stat as the listing (the link itself, not its target).  Keep the
+        # separator of drive roots: "C:" would be relative to the drive's CWD.
+        stat_path = path.rstrip(os.sep) if tail not in (os.sep, '') else path
+        try:
+            root_mtime = os.stat(stat_path, follow_symlinks=False).st_mtime
+        except OSError:
+            root_mtime = None
         if tail in (os.sep, ''):
             display_name = drive
         else:
             display_name = basename(path.rstrip(os.sep))
-        root_hidden = root_system = False
-        if NT:
-            try:
-                root_attrs = os.stat(path).st_file_attributes
-            except OSError:
-                pass
-            else:
-                root_hidden = bool(root_attrs & FILE_ATTRIBUTE_HIDDEN)
-                root_system = bool(root_attrs & FILE_ATTRIBUTE_SYSTEM)
+        # The root line is re-rendered; keep the flags it was listed with.
+        root_flags = decode_flags(parts[0][1]) if parts else 0
         root_entry = ListingItem(
             display_name,
             path,
             True,
             9999,  # size not shown for dirs
-            _base_timestamp,
-            root_hidden,
-            root_system,
+            root_mtime,
+            root_flags,
             indentation_level,
             expanded=True,
             note=err or ('empty' if not entries else '')
@@ -1206,8 +1195,8 @@ class dired_fold(TextCommand, DiredBaseCommand):
             self.index = self.index[:start_line] + self.index[end_line:]
             v.settings().set('dired_index', self.index)
 
-        name_point  = self._get_name_point(line)
-        icon_region = Region(name_point - 2, name_point - 1)
+        icon_point  = self._get_icon_point(line)
+        icon_region = Region(icon_point, icon_point + 1)
 
         v.set_read_only(False)
         v.replace(edit, icon_region, '▸')
@@ -1324,11 +1313,13 @@ class dired_mark_extension(TextCommand, DiredBaseCommand):
         filergn = self.fileregion()
         if filergn.empty():
             return
-        current_item = self.view.substr(self.view.line(self.view.sel()[0].a))
-        if current_item.endswith(os.sep) or current_item == PARENT_SYM:
+        self.load_index()
+        row = self.view.rowcol(self.view.sel()[0].a)[0]
+        current_item = self.index[row] if row < len(self.index) else ''
+        if not current_item or current_item.endswith(os.sep) or current_item == PARENT_SYM:
             ext = ''
         else:
-            ext = current_item.split('.')[-1]
+            ext = basename(current_item).split('.')[-1]
         window = self.view.window()
         assert window
         pv = window.show_input_panel('Extension:', ext, self.on_done, None, None)
@@ -1569,36 +1560,47 @@ def _format_path_for_display(path: str, settings) -> str:
 
 
 def format_items(items, show_stats, tab_size, dir_sep: str):
+    '''Build the name column of each line (see the layout in common.py):
+    [indent][SEG][flags][SEG][icon][SEG][name][SEG][note]'''
     rendered = []
     new_index = []
+    seg = SEGMENT_SEP
     for e in items:
         indent = '\t' * e.depth
         if e.is_dir:
             icon = '▾' if e.expanded else '▸'
-            note = f'\t<{e.note}>' if e.note else ''
-            base_line = f"{indent}{icon} {e.name}{dir_sep}{note}"
+            name = f"{e.name}{dir_sep}"
+            note = f'<{e.note}>' if e.note else ''
         else:
-            base_line = f"{indent}≡ {e.name}"
-        display_len = len(base_line.expandtabs(tab_size))
+            icon = '≡'
+            name = e.name
+            note = ''
+        # Padding belongs before a separator: the icon's space before the
+        # name, the tab before a note.
+        pad = '\t' if note else ''
+        base_line = f"{indent}{seg}{encode_flags(e.flags)}{seg}{icon} {seg}{name}{pad}{seg}{note}"
+        display_len = visible_len(base_line, tab_size)
         size_part, timestamp = format_stats(e, show_stats)
-        flags_part = (('H' if e.hidden else '-') + ('S' if e.system else '-')) if NT else ''
-        rendered.append((base_line, display_len, size_part, timestamp, flags_part))
+        attrs_part = (
+            ('H' if e.flags & FLAG_HIDDEN else '-') + ('S' if e.flags & FLAG_SYSTEM else '-')
+        ) if NT else ''
+        rendered.append((base_line, display_len, size_part, timestamp, attrs_part))
         new_index.append(e.full_path)
     return rendered, new_index
 
 
 def render_items(items, name_width, size_width, show_stats):
+    '''Append the stats columns: each one starts with COL, and either all of
+    them are present or none (stats off, or nothing to show).'''
     lines = []
-    for base_line, display_len, size_part, timestamp, flags_part in items:
+    for base_line, display_len, size_part, timestamp, attrs_part in items:
         if show_stats and size_part:
             padding = max(name_width - display_len + STATS_PADDING, STATS_PADDING)
-            size_aligned = size_part.rjust(size_width)
-            stats_segment = size_aligned
-            if timestamp:
-                stats_segment += f"  {timestamp}"
-            if flags_part:
-                stats_segment += f"  {flags_part}"
-            lines.append(f"{base_line}{' ' * padding}{SEPARATOR}{stats_segment}")
+            columns = [size_part.rjust(size_width), timestamp]
+            if NT:
+                columns.append(attrs_part)
+            stats = f"  {COLUMN_SEP}".join(columns)
+            lines.append(f"{base_line}{' ' * padding}{COLUMN_SEP}{stats}")
         else:
             lines.append(base_line)
     return lines

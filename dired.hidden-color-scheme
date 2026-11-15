@@ -1,21 +1,38 @@
-// To Highlight Hidden and System Files on Windows with Mariana Color Scheme and Default Dark Theme
+// FileBrowser highlighting for item flags, for the Mariana color scheme.
+//
+// The flag scopes (dired.fileattr.hidden, dired.fileattr.system,
+// dired.excluded, dired.link) cover the whole item line and come BEFORE
+// string.name.* in the scope stack, so each rule names the parts it colors
+// (name, extension, directory slash) as descendants.  That also makes it
+// more specific than broad rules like "string".  Combinations are plain
+// selectors, e.g. "system but not hidden" below.
 {
 	"rules":
 	[
 		{
-		    "name": "Hidden File",
-		    "scope": "dired.fileattr.hidden",
+		    "name": "Pattern-excluded item",
+		    "scope": "dired.excluded string.name.file.dired, dired.excluded string.name.file.extension.dired, dired.excluded string.name.directory.dired, dired.excluded punctuation.definition.directory.slash.dired",
+		    "foreground": "color(var(white) a(0.35))",
+		},
+		{
+		    "name": "Hidden item",
+		    "scope": "dired.fileattr.hidden string.name.file.dired, dired.fileattr.hidden string.name.file.extension.dired, dired.fileattr.hidden string.name.directory.dired, dired.fileattr.hidden punctuation.definition.directory.slash.dired",
 		    "foreground": "color(var(green) a(0.6) s(+ 10%))",
 		},
 		{
-		    "name": "System File",
-		    "scope": "dired.fileattr.system",
+		    "name": "System item (also hidden)",
+		    "scope": "dired.fileattr.system string.name.file.dired, dired.fileattr.system string.name.file.extension.dired, dired.fileattr.system string.name.directory.dired, dired.fileattr.system punctuation.definition.directory.slash.dired",
 		    "foreground": "color(var(blue5) a(0.6) s(+ 10%))",
 		},
 		{
-		    "name": "System File (not hidden)",
-		    "scope": "dired.fileattr.system.only",
+		    "name": "System item (not hidden)",
+		    "scope": "dired.fileattr.system string.name.file.dired - dired.fileattr.hidden, dired.fileattr.system string.name.file.extension.dired - dired.fileattr.hidden, dired.fileattr.system string.name.directory.dired - dired.fileattr.hidden, dired.fileattr.system punctuation.definition.directory.slash.dired - dired.fileattr.hidden",
 		    "foreground": "color(var(blue5) s(+ 10%))",
+		},
+		{
+		    "name": "Link (symlink, junction)",
+		    "scope": "dired.link string.name.file.dired, dired.link string.name.file.extension.dired, dired.link string.name.directory.dired, dired.link punctuation.definition.directory.slash.dired",
+		    "font_style": "italic",
 		},
 	]
 }

@@ -632,7 +632,7 @@ class dired_draw_vcs_marker(TextCommand, DiredBaseCommand):
             for p in chain([full_fn], paths_upwards(full_fn)):
                 r = files_regions.get(p, 0)
                 if r:
-                    icon   = self._get_name_point(r) - 2
+                    icon   = self._get_icon_point(r)
                     r      = Region(icon, icon + offset)
                     status = changed_items[fn]
                     if status == 'M':
