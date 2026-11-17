@@ -24,6 +24,8 @@ from .common import (
     DiredBaseCommand, hijack_window, get_group, emit_event,
     MARK_OPTIONS, NT, OSX, PARENT_SYM, sort_nicely)
 
+RECURSE_GUARD = 10
+RECURSE_COUNT = 0
 
 STARTUPINFO = None
 if sys.platform == "win32":
@@ -275,6 +277,8 @@ class dired_fuzzy_search(TextCommand, DiredBaseCommand):
         return self.view.score_selector(0, "text.dired") > 0
 
     def run(self, edit):
+        global RECURSE_COUNT
+        RECURSE_COUNT = 0
         window = self.view.window()
         if not window:
             return
@@ -290,10 +294,17 @@ class dired_fuzzy_search(TextCommand, DiredBaseCommand):
         auto_expand_trigger = ''
 
         def apply_filter(text: str):
+            global RECURSE_COUNT
             if text:
                 self.view.settings().set('dired_filter', text.strip())
             else:
                 self.view.settings().erase('dired_filter')
+
+            RECURSE_COUNT += 1
+            if RECURSE_COUNT >= RECURSE_GUARD:
+                print("recurse limit reached!")
+                raise Exception
+
             self.view.run_command('dired_refresh', {'auto_expand': auto_expand})
 
         def on_done(text: str):
@@ -310,6 +321,7 @@ class dired_fuzzy_search(TextCommand, DiredBaseCommand):
             # auto expansion, keep the current auto_expand depth and just
             # re-apply the filter.
             if auto_expand_trigger and text.startswith(auto_expand_trigger):
+
                 apply_filter(text)
                 return
 
