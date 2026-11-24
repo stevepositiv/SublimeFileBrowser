@@ -295,6 +295,9 @@ class dired_fuzzy_search(TextCommand, DiredBaseCommand):
         snapshot = filter_snapshots[vid] = FilterSnapshot()
         auto_expand_trigger = ''
 
+        input_counter = 0        # Count input events, so a pending subfolder search can skip itself
+        input_debounce_ms = 200  # Pause after typing before searching subfolders
+
         def apply_filter(text: str, *, select_first_match: bool):
             if text:
                 self.view.settings().set('dired_filter', text.strip())
@@ -305,6 +308,8 @@ class dired_fuzzy_search(TextCommand, DiredBaseCommand):
             })
 
         def on_done(text: str):
+            nonlocal input_counter
+            input_counter += 1
             snapshot.release()
             filter_snapshots.pop(vid, None)
             self.view.settings().set('dired_filter_live', False)
@@ -312,7 +317,8 @@ class dired_fuzzy_search(TextCommand, DiredBaseCommand):
             apply_filter(text, select_first_match=False)
 
         def on_change(text: str):
-            nonlocal auto_expand_trigger
+            nonlocal auto_expand_trigger, input_counter
+            input_counter += 1
 
             text = text.strip()
 
@@ -333,13 +339,27 @@ class dired_fuzzy_search(TextCommand, DiredBaseCommand):
             apply_filter(text, select_first_match=True)
 
             # If live fuzzy filtering yields no matches at the current depth,
-            # enable auto expansion up to three levels and try again.
+            # search subfolders, but only once typing paused: that walk blocks
+            # the UI.  The status message gets drawn while we wait.
             if self.view.settings().get('dired_count', 0) == 0:
-                snapshot.depth = 3
-                auto_expand_trigger = text
-                apply_filter(text, select_first_match=True)
+                sublime.status_message('FileBrowser: Searching subfolders, please wait...')
+                this_input = input_counter
+                sublime.set_timeout(
+                    lambda: search_subfolders(text) if this_input == input_counter else None,
+                    input_debounce_ms
+                )
+
+        def search_subfolders(text: str):
+            # Enable auto expansion up to three levels and try again.
+            nonlocal auto_expand_trigger
+            snapshot.depth = 3
+            auto_expand_trigger = text
+            apply_filter(text, select_first_match=True)
+            sublime.status_message('')
 
         def on_cancel():
+            nonlocal input_counter
+            input_counter += 1
             snapshot.release()
             filter_snapshots.pop(vid, None)
             self.view.settings().set('dired_filter_live', False)
